@@ -1,0 +1,42 @@
+All-in-DNS License
+Copyright (c) 2026 FQkun
+
+本项目基于 MIT 协议开源，并附加以下条款。使用、复制、修改、合并、发布、分发本软件及其衍生作品，即视为接受本协议全部条款。
+
+一、附加条款
+
+1. 禁止商业牟利
+   禁止将本软件或其任何衍生作品用于任何形式的牟利商业用途，包括但不限于：
+   - 出售本软件或其衍生作品；
+   - 以付费方式提供部署、托管、运维或技术支持服务；
+   - 以 SaaS、订阅、按量计费等任何形式向第三方收费；
+   - 将本软件集成进任何以盈利为目的的产品或服务中。
+
+2. 保留出处
+   任何二次开发、修改或衍生作品，必须保留本协议，并显著注明原项目 GitHub 链接：
+   https://github.com/FQkun/all-in-dns
+   不得声称本软件为原创作品，不得移除或篡改原始来源信息。
+
+二、MIT 协议正文
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+三、条款冲突
+
+上述附加条款与本协议正文（MIT）冲突时，以附加条款为准。
