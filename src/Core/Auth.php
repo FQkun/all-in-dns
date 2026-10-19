@@ -15,12 +15,18 @@ class Auth
         return $u;
     }
 
+    private static function isSecure(): bool
+    {
+        if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') return true;
+        return strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+    }
+
     public static function login(array $user): string
     {
         $sid = bin2hex(random_bytes(32));
         $ttl = $GLOBALS['config']['app']['session_ttl'];
-        RedisClient::i()->set('session:' . $sid, json_encode($user), $ttl);
-        setcookie('DNS_SID', $sid, ['expires' => time() + $ttl, 'path' => '/', 'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off', 'httponly' => true, 'samesite' => 'Strict']);
+        RedisClient::i()->set('session:' . $sid, json_encode(['id' => (int)$user['id']]), $ttl);
+        setcookie('DNS_SID', $sid, ['expires' => time() + $ttl, 'path' => '/', 'secure' => self::isSecure(), 'httponly' => true, 'samesite' => 'Strict']);
         return $sid;
     }
 
@@ -28,15 +34,30 @@ class Auth
     {
         $sid = $_COOKIE['DNS_SID'] ?? '';
         if ($sid) RedisClient::i()->del('session:' . $sid);
-        setcookie('DNS_SID', '', ['expires' => time() - 3600, 'path' => '/', 'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off', 'httponly' => true, 'samesite' => 'Strict']);
+        setcookie('DNS_SID', '', ['expires' => time() - 3600, 'path' => '/', 'secure' => self::isSecure(), 'httponly' => true, 'samesite' => 'Strict']);
     }
 
     public static function user(): ?array
     {
         $sid = $_COOKIE['DNS_SID'] ?? '';
         if (!$sid) return null;
-        $raw = RedisClient::i()->get('session:' . $sid);
-        return $raw ? json_decode($raw, true) : null;
+        try {
+            $raw = RedisClient::i()->get('session:' . $sid);
+        } catch (\Throwable $e) {
+            error_log('[AUTH] redis unavailable: ' . $e->getMessage());
+            Http::json(['code' => 503, 'msg' => '服务暂时不可用（会话存储异常），请稍后重试'], 503);
+        }
+        if (!$raw) return null;
+        $sess = json_decode($raw, true);
+        $uid = (int)($sess['id'] ?? 0);
+        if (!$uid) return null;
+        try {
+            $st = Database::i()->prepare('SELECT id,username,role,last_login_at FROM users WHERE id=?');
+            $st->execute([$uid]);
+            return $st->fetch() ?: null;
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     public static function requireUser(): array

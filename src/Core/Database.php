@@ -17,6 +17,7 @@ class Database extends \PDO
                  \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
                  \PDO::ATTR_EMULATE_PREPARES => false]
             );
+            self::$instance->exec('SET SESSION group_concat_max_len = 8192');
         }
         return self::$instance;
     }

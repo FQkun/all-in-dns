@@ -11,6 +11,10 @@ class ProviderFactory
         $ak = Crypto::decrypt($account['access_key_id']);
         $sk = Crypto::decrypt($account['access_key_secret']);
         $extra = $account['extra'] ? json_decode($account['extra'], true) ?: [] : [];
+        if (!empty($extra['session_token'])) {
+            try { $extra['session_token'] = Crypto::decrypt((string)$extra['session_token']); }
+            catch (\Throwable $e) { $extra['session_token'] = (string)$extra['session_token']; }
+        }
         return match ($account['provider']) {
             'tencent' => new TencentProvider($ak, $sk, $extra),
             'aliyun' => new AliyunProvider($ak, $sk, $extra),

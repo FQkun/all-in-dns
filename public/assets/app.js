@@ -9,7 +9,12 @@ const cache = new Map();
 const CACHE_TTL = 8000;
 
 async function api(method, url, body, headers = {}) {
-  if (url.startsWith('/api/')) url = '/index.php?r=' + encodeURIComponent(url);
+  if (url.startsWith('/api/')) {
+    const qi = url.indexOf('?');
+    const path = qi === -1 ? url : url.slice(0, qi);
+    const qs = qi === -1 ? '' : url.slice(qi + 1);
+    url = '/index.php?r=' + encodeURIComponent(path) + (qs ? '&' + qs : '');
+  }
   const isGet = method === 'GET' && body === undefined;
   const noCache = headers['Cache-Control'] === 'no-cache';
   if (isGet && !noCache) {
@@ -314,7 +319,11 @@ views.records = {
   title: '解析记录',
   async render(el, ctx = {}) {
     if (!ctx.domainId) return nav('domains');
-    const recs = await api('GET', `/api/domains/${ctx.domainId}/records`, undefined, { 'Cache-Control': 'no-cache' });
+    const page = ctx.page || 1, size = 100;
+    const res = await api('GET', `/api/domains/${ctx.domainId}/records?page=${page}&size=${size}`, undefined, { 'Cache-Control': 'no-cache' });
+    const recs = res.items || [];
+    const total = res.total ?? recs.length;
+    const pages = Math.max(1, Math.ceil(total / size));
     const TYPES = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SRV', 'CAA'];
     el.innerHTML = `
       <div class="page-head"><h2 class="page-title">解析记录 - ${esc(ctx.domainName || '')}</h2>
@@ -329,7 +338,7 @@ views.records = {
         <button class="btn danger" id="batch-del">删除选中</button>
       </div>
       <div class="panel scroll"><table><thead><tr><th><input type="checkbox" class="checkbox" id="chk-all" aria-label="全选"></th>
-        <th>主机</th><th>类型</th><th>线路</th><th>记录值</th><th>TTL</th><th>MX</th><th>同步状态</th><th>更新时间</th><th>操作</th></tr></thead>
+        <th>主机</th><th>类型</th><th>线路</th><th>记录值</th><th>TTL</th><th>MX</th><th>本地状态</th><th>同步状态</th><th>更新时间</th><th>操作</th></tr></thead>
       <tbody>${recs.map(r => `<tr data-id="${r.id}">
         <td><input type="checkbox" class="checkbox row-chk" value="${r.id}" aria-label="选择"></td>
         <td>${esc(r.sub_domain)}</td>
@@ -337,18 +346,29 @@ views.records = {
         <td>${esc(r.line)}</td>
         <td class="wrap">${esc(r.value)}</td>
         <td>${r.ttl}</td><td>${r.priority ?? '-'}</td>
+        <td>${r.status === 'disabled'
+          ? '<span class="badge pending" title="云端删除未完成，等待定时任务重试">待清理</span>'
+          : '<span class="badge ok">生效中</span>'}</td>
         <td>${(r.sync_states || '').split(',').filter(Boolean).map(s => {
-          const [p, st] = s.split(':');
+          const parts = s.split('|');
+          const aid = parts.length > 2 ? parts[0] : '';
+          const p = parts.length > 2 ? parts[1] : parts[0];
+          const st = parts.length > 2 ? parts[2] : parts[1];
           const lbl = prov(p);
-          return `<span class="badge ${st}" title="${lbl}">${lbl} ${st === 'success' ? '成功' : st === 'failed' ? '失败' : esc(st)}</span>`;
+          return `<span class="badge ${st}" title="${lbl}${aid ? ' 账号#' + aid : ''}">${lbl} ${st === 'success' ? '成功' : st === 'failed' ? '失败' : esc(st)}</span>`;
         }).join(' ') || '<span class="badge neutral">未同步</span>'}</td>
         <td>${esc(r.updated_at)}</td>
         <td class="ops"><button class="btn ghost sm edit-rec" data-r='${esc(JSON.stringify(r))}'>编辑</button>
             <button class="btn ghost sm danger del-rec" data-id="${r.id}">删除</button></td>
-      </tr>`).join('') || '<tr><td colspan="10" class="empty">暂无记录</td></tr>'}</tbody></table></div>`;
+      </tr>`).join('') || '<tr><td colspan="11" class="empty">暂无记录</td></tr>'}</tbody></table>
+      <div class="pager"><button class="btn ghost sm" id="pg-prev" ${page <= 1 ? 'disabled' : ''}>上一页</button>
+        <span class="hint">第 ${page} / ${pages} 页 · 共 ${total} 条</span>
+        <button class="btn ghost sm" id="pg-next" ${page >= pages ? 'disabled' : ''}>下一页</button></div></div>`;
 
     $('#btn-refresh').onclick = () => busy($('#btn-refresh'), () => views.records.render(el, ctx));
     $('#back-domains').onclick = () => nav('domains');
+    $('#pg-prev').onclick = () => { ctx.page = page - 1; views.records.render(el, ctx); };
+    $('#pg-next').onclick = () => { ctx.page = page + 1; views.records.render(el, ctx); };
 
     const syncChkAll = () => {
       const all = $('#chk-all');
@@ -374,6 +394,7 @@ views.records = {
           const fails = (res.sync || []).filter(s => s.status === 'failed');
           if (fails.length) toast(`已保存，但 ${fails.length} 个平台同步失败（将自动重试）`, 'err');
           else toast('已保存并同步成功', 'ok');
+          ctx.page = 1;
           views.records.render(el, ctx);
         } catch (e) { toast(e.message, 'err'); return false; }
       }}]);
@@ -390,6 +411,7 @@ views.records = {
           const fails = (res.sync || []).filter(s => s.status === 'failed');
           t.closest('tr')?.remove();
           fails.length ? toast('本地已删除，部分平台同步失败（将自动重试）', 'err') : toast('已删除', 'ok');
+          ctx.page = 1;
           await views.records.render(el, ctx);
         });
       }
@@ -400,6 +422,7 @@ views.records = {
         busy(t, async () => {
           const result = await api('POST', '/api/records/batch-delete', { ids });
           toast(result.pending?.length ? `已删除，${result.pending.length} 条记录等待云端重试` : '已删除', result.pending?.length ? 'err' : 'ok');
+          ctx.page = 1;
           await views.records.render(el, ctx);
         });
       }
@@ -409,6 +432,7 @@ views.records = {
           const r2 = await api('POST', `/api/domains/${ctx.domainId}/import-remote`);
           toast(`已拉取 ${r2.imported} 条` + (r2.merged ? `，合并重复 ${r2.merged} 条` : ''), 'ok');
           if (r2.errors?.length) toast('拉取失败: ' + r2.errors.join('；'), 'err');
+          ctx.page = 1;
           views.records.render(el, ctx);
         });
       }
@@ -417,7 +441,8 @@ views.records = {
           <textarea id="f-csv" rows="10" placeholder="@,A,默认,1.2.3.4,600,"></textarea></div>`,
           [{ label: '取消' }, { label: '导入', cls: 'primary', onclick: async () => {
             try { const r2 = await api('POST', `/api/domains/${ctx.domainId}/import`, { csv: $('#f-csv').value });
-              toast(`已导入 ${r2.imported} 条`, 'ok'); views.records.render(el, ctx);
+              toast(`已导入 ${r2.imported} 条` + (r2.skipped ? `，跳过 ${r2.skipped} 条` : ''), 'ok');
+              ctx.page = 1; views.records.render(el, ctx);
             } catch (e2) { toast(e2.message, 'err'); return false; }
           }}]);
       }
@@ -626,78 +651,73 @@ async function showApp() {
   nav(views[hash] ? hash : 'dashboard');
 }
 
+const loginBtn = $('#login-btn');
+const captchaCfg = window.AliyunCaptchaConfig || {};
+const captchaEnabled = !!(captchaCfg.prefix && captchaCfg.scene);
+let captchaParam = null, captchaInst = null;
+
+function resetCaptcha() {
+  captchaParam = null;
+  loginBtn.disabled = captchaEnabled;
+  if (captchaInst && captchaInst.refresh) captchaInst.refresh();
+}
+
 $('#login-form').onsubmit = async e => {
   e.preventDefault();
-  if (e.target.dataset.mode !== 'install') return;
-  const fd = new FormData(e.target);
-  busy($('#login-btn'), async () => {
-    await api('POST', '/api/install', { username: fd.get('username'), password: fd.get('password') });
-    location.reload();
-  });
+  if (loginBtn.disabled) return;
+  if (captchaEnabled && !captchaParam) { toast('请先完成安全验证', 'err'); return; }
+  loginBtn.disabled = true;
+  try {
+    const fd = new FormData($('#login-form'));
+    const body = { username: fd.get('username'), password: fd.get('password') };
+    const headers = {};
+    if (captchaParam) { body.captcha = captchaParam; headers['captcha-verify-param'] = captchaParam; }
+    await api('POST', '/api/auth/login', body, headers);
+    await showApp();
+  } catch (err) {
+    toast(err.message, 'err');
+    resetCaptcha();
+  }
 };
 
-try {
-  const loginBtn = $('#login-btn');
-  let captchaParam = null, captchaInst = null;
-  const resetCaptcha = () => {
-    captchaParam = null;
-    loginBtn.disabled = true;
-    if (captchaInst?.refresh) captchaInst.refresh();
-  };
-  const cc = window.AliyunCaptchaConfig || {};
-  const captchaEnabled = !!(cc.prefix && cc.scene);
-  const plainSubmit = () => {
-    loginBtn.onclick = () => { $('#login-form').requestSubmit(); };
-  };
-  if ($('#login-form').dataset.mode === 'install') {
-    loginBtn.onclick = () => { $('#login-form').requestSubmit(); };
-  } else if (!captchaEnabled) {
-    plainSubmit();
-  } else if (typeof initAliyunCaptcha === 'function') {
-    loginBtn.disabled = true;
-    window.initAliyunCaptcha({
-      SceneId: cc.scene,
-      mode: 'embed',
-      element: '#captcha-element',
-      success: captchaVerifyParam => {
-        captchaParam = captchaVerifyParam;
-        loginBtn.disabled = false;
-      },
-      fail: result => console.error(result),
-      getInstance: i => { captchaInst = i; },
-      server: ['captcha-esa-open.aliyuncs.com', 'captcha-esa-open-b.aliyuncs.com'],
-      slideStyle: { width: 320, height: 40 },
-      language: 'cn',
-      rem: 0.9
-    });
-    loginBtn.onclick = async () => {
-      if (!captchaParam) { toast('请先完成安全验证', 'err'); return; }
-      const fd = new FormData($('#login-form'));
-      busy(loginBtn, async () => {
-        try {
-          await api('POST', '/api/auth/login', {
-            username: fd.get('username'),
-            password: fd.get('password'),
-            captcha: captchaParam
-          }, { 'captcha-verify-param': captchaParam });
-          showApp();
-        } catch (err) {
-          toast(err.message, 'err');
-          resetCaptcha();
-        }
+loginBtn.onclick = () => $('#login-form').requestSubmit();
+
+if (captchaEnabled) {
+  if (typeof window.initAliyunCaptcha === 'function') {
+    try {
+      loginBtn.disabled = true;
+      window.initAliyunCaptcha({
+        SceneId: captchaCfg.scene,
+        mode: 'embed',
+        element: '#captcha-element',
+        success: p => { captchaParam = p; loginBtn.disabled = false; },
+        fail: r => console.error(r),
+        getInstance: i => { captchaInst = i; },
+        server: ['captcha-esa-open.aliyuncs.com', 'captcha-esa-open-b.aliyuncs.com'],
+        slideStyle: { width: 320, height: 40 },
+        language: 'cn',
+        rem: 0.9
       });
-    };
+    } catch (e) {
+      console.error('captcha init failed', e);
+      loginBtn.disabled = false;
+      loginBtn.onclick = () => toast('验证码组件加载失败，请检查网络后刷新', 'err');
+    }
   } else {
+    loginBtn.disabled = false;
     loginBtn.onclick = () => toast('验证码组件加载失败，请检查网络后刷新', 'err');
   }
-} catch (e) {
-  console.error('captcha init failed', e);
 }
 
 $('#btn-logout').onclick = async () => { await api('POST', '/api/auth/logout'); showLogin(); };
 
-window.addEventListener('focus', () => document.body.classList.remove('blurred'));
-window.addEventListener('blur', () => document.body.classList.add('blurred'));
+const blurTargets = () => [$('#view'), $('#sidebar'), $('#app-footer')].filter(Boolean);
+window.addEventListener('focus', () => blurTargets().forEach(el => el.classList.remove('blurred')));
+window.addEventListener('blur', () => {
+  if ($('#modal-root')?.children.length) return;
+  if (user && user.role === 'admin') return;
+  blurTargets().forEach(el => el.classList.add('blurred'));
+});
 
 (async function boot() {
   showApp();

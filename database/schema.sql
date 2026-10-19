@@ -62,7 +62,7 @@ CREATE TABLE records (
   domain_id INT UNSIGNED NOT NULL,
   sub_domain VARCHAR(255) NOT NULL DEFAULT '@',
   type VARCHAR(10) NOT NULL,
-  line VARCHAR(32) NOT NULL DEFAULT '默认',
+  line VARCHAR(64) NOT NULL DEFAULT '默认',
   value VARCHAR(2048) NOT NULL,
   ttl INT UNSIGNED NOT NULL DEFAULT 600,
   priority INT UNSIGNED NULL,
@@ -70,6 +70,7 @@ CREATE TABLE records (
   status ENUM('active','disabled','pending') NOT NULL DEFAULT 'active',
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_records_identity (domain_id, line, sub_domain, type, value(191)),
   KEY idx_domain (domain_id),
   KEY idx_domain_host (domain_id, sub_domain, type)
 ) ENGINE=InnoDB;
@@ -86,6 +87,7 @@ CREATE TABLE record_provider_map (
   retry_count INT UNSIGNED NOT NULL DEFAULT 0,
   UNIQUE KEY uk_record_account (record_id, account_id),
   KEY idx_record (record_id),
+  KEY idx_account (account_id),
   KEY idx_retry (sync_status, retry_count)
 ) ENGINE=InnoDB;
 
@@ -101,7 +103,9 @@ CREATE TABLE sync_queue (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   executed_at DATETIME NULL,
   next_retry_at DATETIME NULL,
-  KEY idx_status (status, next_retry_at)
+  KEY idx_status (status, next_retry_at),
+  KEY idx_record (record_id),
+  KEY idx_account (account_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE sync_logs (
@@ -115,7 +119,8 @@ CREATE TABLE sync_logs (
   request_cost_ms INT UNSIGNED NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_record (record_id),
-  KEY idx_created (created_at)
+  KEY idx_created (created_at),
+  KEY idx_account_created (account_id, created_at)
 ) ENGINE=InnoDB;
 
 CREATE TABLE operation_logs (
@@ -133,7 +138,8 @@ CREATE TABLE operation_logs (
 CREATE TABLE backups (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(128) NOT NULL,
-  data LONGTEXT NOT NULL,
+  data LONGBLOB NOT NULL,
+  is_gzip TINYINT NOT NULL DEFAULT 0,
   record_count INT UNSIGNED NOT NULL DEFAULT 0,
   created_by VARCHAR(64) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP

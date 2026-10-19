@@ -2,6 +2,7 @@
 // 定时任务：失败队列重试 + 异常告警日志
 // crontab: * * * * * php /var/www/dns_all/cron/retry.php >> /var/log/dns_retry.log 2>&1
 declare(strict_types=1);
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('cli only'); }
 require dirname(__DIR__) . '/src/bootstrap.php';
 
 use App\Core\Database;

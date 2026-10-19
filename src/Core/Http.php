@@ -32,6 +32,11 @@ class Http
 
     public static function ip(): string
     {
-        return $_SERVER['HTTP_X_REAL_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        foreach (['HTTP_X_REAL_IP', 'HTTP_X_FORWARDED_FOR'] as $h) {
+            if (empty($_SERVER[$h])) continue;
+            $first = trim(explode(',', (string)$_SERVER[$h])[0]);
+            if (filter_var($first, FILTER_VALIDATE_IP)) return $first;
+        }
+        return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
     }
 }

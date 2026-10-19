@@ -12,6 +12,8 @@ class VolcProvider extends BaseProvider
 
     private const WRITE_ACTIONS = ['CreateRecord', 'UpdateRecord', 'DeleteRecord'];
 
+    private array $zidCache = [];
+
     public function buildRequest(string $action, array $query): array
     {
         $ts = time();
@@ -110,7 +112,7 @@ class VolcProvider extends BaseProvider
                     'id' => (string)$rec['RecordID'],
                     'sub' => $rec['Host'],
                     'type' => $rec['Type'],
-                    'line' => $rec['Line'],
+                    'line' => LineMapper::from('volc', (string)$rec['Line']),
                     'value' => $rec['Value'],
                     'ttl' => (int)$rec['TTL'],
                     'priority' => $rec['Weight'] ?? null,
@@ -125,12 +127,15 @@ class VolcProvider extends BaseProvider
     private function zid(string $domain): int
     {
         $target = rtrim(strtolower($domain), '.');
+        if (isset($this->zidCache[$target])) return $this->zidCache[$target];
         $page = 1;
         do {
             $r = $this->call('ListZones', ['PageNumber' => $page, 'PageSize' => 100]);
             $zones = $r['Zones'] ?? [];
             foreach ($zones as $z) {
-                if (rtrim(strtolower((string)($z['ZoneName'] ?? '')), '.') === $target) return (int)$z['ZID'];
+                if (rtrim(strtolower((string)($z['ZoneName'] ?? '')), '.') === $target) {
+                    return $this->zidCache[$target] = (int)$z['ZID'];
+                }
             }
             $total = (int)($r['TotalCount'] ?? count($zones));
             $page++;
@@ -171,8 +176,7 @@ class VolcProvider extends BaseProvider
 
     private function lineValue(?string $line): string
     {
-        if ($line === null || $line === '' || $line === '默认' || strcasecmp($line, 'default') === 0) return 'default';
-        return $line;
+        return LineMapper::to('volc', $line);
     }
 
     public function createRecord(string $domain, array $r): array

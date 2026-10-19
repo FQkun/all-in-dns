@@ -88,3 +88,5 @@ cron/              retry.php、backup.php（CLI 备用脚本）
 1. **禁止商业牟利**：禁止将本项目或其衍生作品用于任何形式的牟利商业用途（包括但不限于出售、付费部署、付费服务、SaaS 收费等）。
 2. **保留出处**：任何二次开发、衍生作品必须保留并注明原项目 GitHub 链接：https://github.com/FQkun/all-in-dns
 3. 其余权利与限制遵循 MIT 协议（MIT License）。
+
+完整条款见 [LICENSE](LICENSE)。

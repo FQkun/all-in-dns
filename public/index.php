@@ -1,6 +1,12 @@
 <?php
 declare(strict_types=1);
 
+header('X-Frame-Options: DENY');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: same-origin');
+header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.alicdn.com; style-src 'self' 'unsafe-inline' https://*.alicdn.com; img-src 'self' data: https://*.alicdn.com; font-src 'self' data:; connect-src 'self' https://*.aliyuncs.com https://*.alicdn.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+
 $uri = $_GET['r'] ?? parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
 if (!is_file(__DIR__ . '/../src/config/config.php')) {
@@ -42,7 +48,8 @@ try {
     $chk = App\Core\Database::i()->query('SELECT COUNT(*) c FROM users')->fetch();
     $installed = (int)($chk['c'] ?? 0) > 0;
 } catch (Throwable $e) {
-    $dbErr = $e->getMessage();
+    error_log('[BOOT] db check failed: ' . $e->getMessage());
+    $dbErr = 'database';
 }
 if (!$installed):
     header('Content-Type: text/html; charset=utf-8');
@@ -50,8 +57,7 @@ if (!$installed):
         http_response_code(500);
         echo '<div style="font-family:sans-serif;background:#f5f5f8;color:#1b1c26;padding:40px">'
            . '<h2 style="color:#d93843">数据库连接失败，无法进入系统</h2>'
-           . '<p style="color:#6f7080">' . htmlspecialchars($dbErr) . '</p>'
-           . '<p style="color:#6f7080">请检查 src/config/config.php 中的数据库配置，或重新运行 install.php</p></div>';
+           . '<p style="color:#6f7080">请检查数据库配置或联系管理员（详情见服务器错误日志）</p></div>';
     } else {
         header('Location: /install.php');
     }

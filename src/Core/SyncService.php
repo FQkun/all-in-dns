@@ -39,6 +39,30 @@ class SyncService
         return $this->executeBatch($queueIds);
     }
 
+    /** 批量扇出：多条记录的同一动作一次性入队后并行执行 */
+    public function dispatchMany(array $recordIds, string $action): array
+    {
+        $queueIds = [];
+        $ins = $this->db->prepare('INSERT INTO sync_queue (record_id,account_id,action,payload) VALUES (?,?,?,?)');
+        $provSt = $this->db->prepare(
+            'SELECT dp.account_id FROM domain_providers dp
+             JOIN cloud_accounts ca ON ca.id = dp.account_id AND ca.status = 1
+             WHERE dp.domain_id = ? AND dp.sync_enabled = 1');
+        foreach ($recordIds as $rid) {
+            $rec = $this->getRecord((int)$rid);
+            if (!$rec) continue;
+            $provSt->execute([(int)$rec['domain_id']]);
+            foreach ($provSt->fetchAll() as $acc) {
+                $ins->execute([(int)$rid, (int)$acc['account_id'], $action, json_encode([
+                    'domain' => $rec['domain'],
+                    'record' => $this->normalizeRecord($rec),
+                ], JSON_UNESCAPED_UNICODE)]);
+                $queueIds[] = (int)$this->db->lastInsertId();
+            }
+        }
+        return $this->executeBatch($queueIds);
+    }
+
     private function normalizeRecord(array $rec): array
     {
         return [
@@ -59,15 +83,15 @@ class SyncService
         return $st->fetch() ?: null;
     }
 
-    private function markMap(int $recordId, int $accountId, string $status, string $msg = '', ?string $providerRecordId = null): void
+    private function markMap(int $recordId, int $accountId, string $provider, string $status, string $msg = '', ?string $providerRecordId = null): void
     {
         $this->db->prepare(
             'INSERT INTO record_provider_map (record_id,account_id,provider,provider_record_id,sync_status,sync_message,synced_at,retry_count)
-             SELECT ?,?,(SELECT provider FROM cloud_accounts WHERE id=?),?,?,?,NOW(),0
+             VALUES (?,?,?,?,?,?,NOW(),0)
              ON DUPLICATE KEY UPDATE sync_status=VALUES(sync_status), sync_message=VALUES(sync_message),
              synced_at=IF(VALUES(sync_status)=\'success\' OR VALUES(sync_status)=\'deleted\', NOW(), synced_at),
              provider_record_id=IF(VALUES(provider_record_id) IS NOT NULL, VALUES(provider_record_id), provider_record_id)')
-            ->execute([$recordId, $accountId, $accountId, $providerRecordId, $status, mb_substr($msg, 0, 500)]);
+            ->execute([$recordId, $accountId, $provider, $providerRecordId, $status, mb_substr($msg, 0, 500)]);
     }
 
     /** 批量并行执行队列任务；单任务失败按指数退避安排重试，不影响其他任务 */
@@ -92,9 +116,22 @@ class SyncService
         $results = [];
         $tasks = [];
         $taskJobs = [];
+
+        $aliveSt = $this->db->prepare('SELECT COUNT(*) FROM records r JOIN domains d ON d.id=r.domain_id WHERE r.id=?');
+        foreach ($jobs as $queueId => $job) {
+            if ($job['action'] === 'delete') continue;
+            $aliveSt->execute([(int)$job['record_id']]);
+            if ((int)$aliveSt->fetchColumn() === 0) {
+                $this->db->prepare("UPDATE sync_queue SET status='success', executed_at=NOW(), last_error='记录已删除，跳过同步' WHERE id=?")
+                    ->execute([$queueId]);
+                $results[$queueId] = ['queue_id' => $queueId, 'provider' => $job['provider'], 'status' => 'success', 'message' => '记录已删除，跳过'];
+                unset($jobs[$queueId]);
+            }
+        }
+
         foreach ($jobIds as $queueId) {
             if (!isset($jobs[$queueId])) {
-                $results[$queueId] = ['queue_id' => $queueId, 'status' => 'failed', 'message' => '任务不存在'];
+                if (!isset($results[$queueId])) $results[$queueId] = ['queue_id' => $queueId, 'status' => 'failed', 'message' => '任务不存在'];
                 continue;
             }
             $job = $jobs[$queueId];
@@ -104,14 +141,21 @@ class SyncService
             try {
                 $prov = ProviderFactory::makeById($accountId);
                 $remoteId = $this->getRemoteId($recordId, $accountId);
+                if ($job['action'] === 'update' && $remoteId === null) {
+                    $remoteId = $this->alignExisting($accountId, $payload);
+                }
                 if ($job['action'] === 'delete' && $remoteId === null) {
-                    $this->markMap($recordId, $accountId, 'deleted', '', null);
-                    $this->db->prepare('UPDATE record_provider_map SET provider_record_id=NULL WHERE record_id=? AND account_id=?')
-                        ->execute([$recordId, $accountId]);
-                    $this->db->prepare('UPDATE sync_queue SET status=\'success\', executed_at=NOW(), last_error=NULL WHERE id=?')->execute([$queueId]);
-                    Logger::sync($recordId, $accountId, $job['provider'], 'delete', true);
-                    $results[$queueId] = ['queue_id' => $queueId, 'provider' => $job['provider'], 'status' => 'success'];
-                    continue;
+                    $found = $this->alignExisting($accountId, $payload);
+                    if ($found === null) {
+                        $this->markMap($recordId, $accountId, $job['provider'], 'deleted', '', null);
+                        $this->db->prepare('UPDATE record_provider_map SET provider_record_id=NULL WHERE record_id=? AND account_id=?')
+                            ->execute([$recordId, $accountId]);
+                        $this->db->prepare('UPDATE sync_queue SET status=\'success\', executed_at=NOW(), last_error=NULL WHERE id=?')->execute([$queueId]);
+                        Logger::sync($recordId, $accountId, $job['provider'], 'delete', true, '远端不存在，视为已删除');
+                        $results[$queueId] = ['queue_id' => $queueId, 'provider' => $job['provider'], 'status' => 'success'];
+                        continue;
+                    }
+                    $remoteId = $found;
                 }
                 [$action, $params] = $prov->opParams($job['action'], $payload['domain'], $payload['record'], $remoteId);
                 $taskJobs[count($tasks)] = ['queue_id' => $queueId, 'remote_id' => $remoteId];
@@ -127,29 +171,29 @@ class SyncService
             $job = $jobs[$queueId];
             $recordId = (int)$job['record_id'];
             $accountId = (int)$job['account_id'];
+            $costMs = isset($out['_cost_ms']) ? (int)$out['_cost_ms'] : null;
             if (isset($out['error'])) {
                 $err = (string)$out['error'];
                 if ($this->isDuplicateError($err) && $job['action'] !== 'delete') {
                     $payload = json_decode($job['payload'], true);
                     $remoteId = $this->alignExisting($accountId, $payload);
                     if ($remoteId !== null) {
-                        // 远端已存在同记录，视为同步成功并登记远端 ID
-                        $this->markMap($recordId, $accountId, 'success', '', $remoteId);
+                        $this->markMap($recordId, $accountId, $job['provider'], 'success', '', $remoteId);
                         $this->db->prepare('UPDATE sync_queue SET status=\'success\', executed_at=NOW(), last_error=NULL WHERE id=?')->execute([$queueId]);
-                        Logger::sync($recordId, $accountId, $job['provider'], $job['action'], true, '远端已存在，已自动对齐');
+                        Logger::sync($recordId, $accountId, $job['provider'], $job['action'], true, '远端已存在，已自动对齐', $costMs);
                         $results[$queueId] = ['queue_id' => $queueId, 'provider' => $job['provider'], 'status' => 'success'];
                         continue;
                     }
                 }
-                $results[$queueId] = $this->failJob($job, $err, $maxRetry);
+                $results[$queueId] = $this->failJob($job, $err, $maxRetry, $costMs);
                 continue;
             }
             if ($job['action'] === 'delete') $newId = null;
             elseif ($meta['remote_id'] !== null) $newId = (string)$meta['remote_id'];
             else $newId = (string)($out['RecordId'] ?? $out['RecordID'] ?? '');
-            $this->markMap($recordId, $accountId, $job['action'] === 'delete' ? 'deleted' : 'success', '', $newId);
+            $this->markMap($recordId, $accountId, $job['provider'], $job['action'] === 'delete' ? 'deleted' : 'success', '', $newId);
             $this->db->prepare('UPDATE sync_queue SET status=\'success\', executed_at=NOW(), last_error=NULL WHERE id=?')->execute([$queueId]);
-            Logger::sync($recordId, $accountId, $job['provider'], $job['action'], true);
+            Logger::sync($recordId, $accountId, $job['provider'], $job['action'], true, '', $costMs);
             $results[$queueId] = ['queue_id' => $queueId, 'provider' => $job['provider'], 'status' => 'success'];
         }
 
@@ -176,10 +220,12 @@ class SyncService
         try {
             $rec = $payload['record'] ?? null;
             if (!$rec) return null;
-            $want = self::recKey((string)$rec['sub'], (string)$rec['type'], (string)$rec['value']);
+            $want = self::recKey((string)$rec['sub'], (string)$rec['type'], (string)$rec['value'], (string)($rec['line'] ?? '默认'));
             $prov = ProviderFactory::makeById($accountId);
             foreach ($prov->listRecords((string)$payload['domain']) as $rr) {
-                if (self::recKey($rr['sub'], $rr['type'], $rr['value']) === $want) return (string)$rr['id'];
+                if (self::recKey((string)$rr['sub'], (string)$rr['type'], (string)$rr['value'], (string)($rr['line'] ?? '默认')) === $want) {
+                    return (string)$rr['id'];
+                }
             }
         } catch (\Throwable $e) {
             return null;
@@ -187,7 +233,7 @@ class SyncService
         return null;
     }
 
-    private function failJob(array $job, string $message, int $maxRetry): array
+    private function failJob(array $job, string $message, int $maxRetry, ?int $costMs = null): array
     {
         $queueId = (int)$job['id'];
         $recordId = (int)$job['record_id'];
@@ -197,8 +243,8 @@ class SyncService
         $delay = $GLOBALS['config']['app']['retry_base_delay'] * (2 ** ($retry - 1));
         $this->db->prepare('UPDATE sync_queue SET status=?, retry_count=?, last_error=?, next_retry_at=DATE_ADD(NOW(), INTERVAL ? SECOND) WHERE id=?')
             ->execute([$failed ? 'failed' : 'pending', $retry, mb_substr($message, 0, 500), $delay, $queueId]);
-        $this->markMap($recordId, $accountId, 'failed', $message);
-        Logger::sync($recordId, $accountId, $job['provider'], $job['action'], false, $message);
+        $this->markMap($recordId, $accountId, $job['provider'], 'failed', $message);
+        Logger::sync($recordId, $accountId, $job['provider'], $job['action'], false, $message, $costMs);
         return ['queue_id' => $queueId, 'provider' => $job['provider'], 'status' => 'failed', 'message' => $message, 'will_retry' => !$failed];
     }
 
@@ -236,12 +282,12 @@ class SyncService
         $domain = $st->fetch();
         if (!$domain) throw new \RuntimeException('域名不存在');
 
-        $local = $this->db->prepare("SELECT id, sub_domain, type, value FROM records WHERE domain_id=? AND status != 'disabled'");
+        $local = $this->db->prepare("SELECT id, sub_domain, type, line, value FROM records WHERE domain_id=? AND status != 'disabled'");
         $local->execute([$domainId]);
         $localKeys = [];
         foreach ($local->fetchAll() as $r) {
             if (strtoupper($r['type']) === 'NS' && strtolower($r['sub_domain']) === '@') continue;
-            $localKeys[$this->key($r['sub_domain'], $r['type'], $r['value'])] = (int)$r['id'];
+            $localKeys[self::recKey($r['sub_domain'], $r['type'], $r['value'], (string)$r['line'])] = (int)$r['id'];
         }
 
         $dp = $this->db->prepare('SELECT * FROM domain_providers WHERE domain_id=? AND sync_enabled=1');
@@ -254,8 +300,8 @@ class SyncService
                 $remote = $prov->listRecords($domain['name']);
                 $remoteKeys = [];
                 foreach ($remote as $rr) {
-                    if ($rr['type'] === 'NS' && strtolower($rr['sub']) === '@') continue;
-                    $remoteKeys[$this->key($rr['sub'], $rr['type'], $rr['value'])] = $rr['id'];
+                    if (strtoupper((string)$rr['type']) === 'NS' && strtolower((string)$rr['sub']) === '@') continue;
+                    $remoteKeys[self::recKey($rr['sub'], $rr['type'], $rr['value'], (string)($rr['line'] ?? '默认'))] = $rr['id'];
                 }
                 $missing = array_diff_key($localKeys, $remoteKeys);
                 $extra = array_diff_key($remoteKeys, $localKeys);
@@ -306,30 +352,33 @@ class SyncService
         return $this->executeBatch($queueIds);
     }
 
-    private function key(string $sub, string $type, string $value): string
+    /** 归一化线路名：把各平台"默认线路"写法统一 */
+    public static function normLine(?string $line): string
     {
-        return self::recKey($sub, $type, $value);
+        $l = trim((string)$line);
+        if ($l === '' || $l === '默认' || strcasecmp($l, 'default') === 0) return '默认';
+        return $l;
     }
 
-    /** 归一化记录键：跨厂商合并用（主机大小写、类型大写、主机名类值去尾点/小写） */
-    public static function recKey(string $sub, string $type, string $value): string
+    /** 归一化记录键：跨厂商合并用（含解析线路；主机大小写、类型大写、主机名类值去尾点/小写） */
+    public static function recKey(string $sub, string $type, string $value, ?string $line = '默认'): string
     {
         $t = strtoupper(trim($type));
         $v = trim($value);
         if ($t === 'MX') $v = preg_replace('/^\d+\s+/', '', $v);
         if (in_array($t, ['CNAME', 'MX', 'NS', 'SRV'], true)) $v = rtrim($v, '.');
         if (in_array($t, ['CNAME', 'MX', 'NS', 'SRV', 'A', 'AAAA'], true)) $v = strtolower($v);
-        return strtolower(trim($sub)) . '|' . $t . '|' . $v;
+        return strtolower(trim($sub)) . '|' . $t . '|' . $v . '|' . self::normLine($line);
     }
 
     /** 合并同一域名下的重复记录：按归一化键分组，保留最早一条，其余的云映射转移后删除 */
     public function mergeDuplicates(int $domainId): int
     {
-        $st = $this->db->prepare('SELECT id, sub_domain, type, value FROM records WHERE domain_id=? ORDER BY id');
+        $st = $this->db->prepare('SELECT id, sub_domain, type, line, value FROM records WHERE domain_id=? ORDER BY id');
         $st->execute([$domainId]);
         $groups = [];
         foreach ($st->fetchAll() as $r) {
-            $groups[self::recKey($r['sub_domain'], $r['type'], $r['value'])][] = (int)$r['id'];
+            $groups[self::recKey($r['sub_domain'], $r['type'], $r['value'], (string)$r['line'])][] = (int)$r['id'];
         }
         $removed = 0;
         foreach ($groups as $ids) {

@@ -80,7 +80,7 @@ class AliyunProvider extends BaseProvider
                     'id' => (string)$rec['RecordId'],
                     'sub' => $rec['RR'],
                     'type' => $rec['Type'],
-                    'line' => $rec['Line'],
+                    'line' => LineMapper::from('aliyun', (string)$rec['Line']),
                     'value' => $rec['Value'],
                     'ttl' => (int)$rec['TTL'],
                     'priority' => $rec['Priority'] ?? null,
@@ -119,8 +119,7 @@ class AliyunProvider extends BaseProvider
 
     private function lineValue(?string $line): string
     {
-        if ($line === null || $line === '' || $line === '默认' || strcasecmp($line, 'default') === 0) return 'default';
-        return $line;
+        return LineMapper::to('aliyun', $line);
     }
 
     public function createRecord(string $domain, array $r): array

@@ -43,9 +43,9 @@ body {
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
   font-size: clamp(13px, 1vw, 15px);
-  transition: filter .2s var(--ease);
 }
-body.blurred { filter: blur(6px); }
+#view, #sidebar, #app-footer { transition: filter .2s var(--ease); }
+#view.blurred, #sidebar.blurred, #app-footer.blurred { filter: blur(6px); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 #app { display: flex; min-height: 100vh; }
@@ -251,6 +251,10 @@ details.panel.queue { margin-bottom: 18px; }
 
 .sync-result { display: flex; gap: 6px; flex-wrap: wrap; }
 .checkbox { width: auto; accent-color: var(--accent); cursor: pointer; }
+.pager {
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+  padding: 10px 14px; border-top: 1px solid var(--border); background: var(--surface);
+}
 
 @media (max-width: 860px) {
   .cards { grid-template-columns: 1fr 1fr; }

@@ -91,12 +91,12 @@ class TencentProvider extends BaseProvider
         do {
             $r = $this->call('DescribeRecordList', ['Domain' => $domain, 'Offset' => $offset, 'Limit' => 100]);
             foreach ($r['RecordList'] ?? [] as $rec) {
-                if ($rec['Type'] === 'NS' && $rec['Name'] === '@') continue;
+                if (strtoupper((string)$rec['Type']) === 'NS' && (string)$rec['Name'] === '@') continue;
                 $out[] = [
                     'id' => (string)$rec['RecordId'],
                     'sub' => $rec['Name'],
                     'type' => $rec['Type'],
-                    'line' => $rec['Line'],
+                    'line' => LineMapper::from('tencent', (string)$rec['Line']),
                     'value' => $rec['Value'],
                     'ttl' => (int)$rec['TTL'],
                     'priority' => $rec['MX'] ?? null,
@@ -134,8 +134,7 @@ class TencentProvider extends BaseProvider
 
     private function lineValue(?string $line): string
     {
-        if ($line === null || $line === '' || $line === '默认' || strcasecmp($line, 'default') === 0) return '默认';
-        return $line;
+        return LineMapper::to('tencent', $line);
     }
 
     public function createRecord(string $domain, array $r): array

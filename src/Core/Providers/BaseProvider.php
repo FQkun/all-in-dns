@@ -124,18 +124,19 @@ abstract class BaseProvider
             $ch = $item['ch'];
             $resp = curl_multi_getcontent($ch);
             $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            $cost = (int)round((float)curl_getinfo($ch, CURLINFO_TOTAL_TIME) * 1000);
             $err = curl_error($ch);
             curl_multi_remove_handle($mh, $ch);
             curl_close($ch);
             if ($err !== '' || $resp === false || $resp === null) {
-                $results[$i] = ['error' => "HTTP请求失败: $err"];
+                $results[$i] = ['error' => "HTTP请求失败: $err", '_cost_ms' => $cost];
                 continue;
             }
             try {
-                $results[$i] = $item['provider']->parseResponse($item['action'], $code, $resp);
+                $results[$i] = $item['provider']->parseResponse($item['action'], $code, $resp) + ['_cost_ms' => $cost];
             } catch (\Throwable $e) {
                 $dbg = $item['action'] . ' params=' . json_encode($taskParams[$i] ?? [], JSON_UNESCAPED_UNICODE);
-                $results[$i] = ['error' => $e->getMessage() . ' [' . $dbg . ']'];
+                $results[$i] = ['error' => $e->getMessage() . ' [' . $dbg . ']', '_cost_ms' => $cost];
             }
         }
         curl_multi_close($mh);

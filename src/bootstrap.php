@@ -8,7 +8,11 @@ spl_autoload_register(function ($class) {
     if (is_file($file)) require $file;
 });
 $GLOBALS['config'] = require __DIR__ . '/config/config.php';
-if (PHP_SAPI !== 'cli' && basename((string)($_SERVER['SCRIPT_FILENAME'] ?? '')) !== 'install.php' && strlen((string)($GLOBALS['config']['app']['secret_key'] ?? '')) < 32) {
+if (strlen((string)($GLOBALS['config']['app']['secret_key'] ?? '')) < 32) {
+    if (PHP_SAPI === 'cli') {
+        fwrite(STDERR, "系统密钥未配置（config.php secret_key）\n");
+        exit(1);
+    }
     http_response_code(500);
     exit('系统密钥未配置');
 }

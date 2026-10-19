@@ -45,7 +45,15 @@ class RedisClient
                 if ($data === '-') return null;
                 $len = (int)$data;
                 $val = '';
-                while (strlen($val) < $len + 2) $val .= fread($this->sock, $len + 2 - strlen($val));
+                while (strlen($val) < $len + 2) {
+                    $chunk = fread($this->sock, $len + 2 - strlen($val));
+                    if ($chunk === false || $chunk === '') {
+                        $meta = stream_get_meta_data($this->sock);
+                        if (!empty($meta['timed_out']) || feof($this->sock)) throw new \RuntimeException('Redis read timeout/closed');
+                        continue;
+                    }
+                    $val .= $chunk;
+                }
                 return substr($val, 0, $len);
             case '*':
                 $n = (int)$data;
