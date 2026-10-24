@@ -531,3 +531,13 @@ input[type="checkbox"]:indeterminate::after {
   width: 7px; height: 7px; border-radius: 50%; background: var(--bad);
   animation: blink 1.1s infinite; flex: none;
 }
+
+/* AI 抽屉：放大 / 还原 */
+.ai-drawer { transition: width .18s ease, height .18s ease; }
+.ai-drawer.expanded {
+  width: min(880px, calc(100vw - 44px));
+  height: min(82vh, calc(100vh - 120px));
+}
+@media (max-width: 900px) {
+  .ai-drawer.expanded { right: 8px; width: calc(100vw - 16px); height: calc(100vh - 116px); }
+}

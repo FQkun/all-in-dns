@@ -15,6 +15,7 @@ const SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
 let recog = null;
 let listening = false;
 let committed = '';
+const EXPAND_KEY = 'dns_ai_expanded';
 
 /** 极简 Markdown 渲染：标题 / 粗体 / 行内代码 / 代码块 / 列表 */
 function md(text) {
@@ -61,6 +62,7 @@ export function mountAssistant() {
         ${icon('spark')}
         <h3>AI 诊断助手</h3>
         <span class="chip ok"><i class="dot"></i>只读</span>
+        <button class="btn ghost icon sm" id="ai-expand" title="放大窗口">${icon('expand')}</button>
         <button class="btn ghost icon sm" id="ai-close">✕</button>
       </div>
       <div class="ai-body" id="ai-body"></div>
@@ -86,6 +88,8 @@ export function mountAssistant() {
 
   $('#ai-fab').onclick = () => window.__aiToggle();
   $('#ai-close').onclick = () => toggle(false);
+  $('#ai-expand').onclick = () => setExpanded(!els.drawer.classList.contains('expanded'));
+  if (localStorage.getItem(EXPAND_KEY) === '1') setExpanded(true);
   els.send.onclick = send;
   els.input.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
@@ -182,10 +186,21 @@ function setListening(on) {
   if (!els) return;
   els.mic.innerHTML = icon(on ? 'stop' : 'mic');
   els.mic.classList.toggle('recording', on);
-  els.mic.title = on ? '停止语音输入' : '语音输入（说中文即可）';
+  els.mic.title = on ? '停止语音输入' : '语音输入';
   els.input.placeholder = on ? '正在聆听…说完点麦克风停止，可再编辑后发送' : '例如：为什么这条记录同步失败？';
   els.voiceBar.classList.toggle('show', on);
-  els.voiceBar.innerHTML = on ? '<span class="live-dot"></span>正在聆听，请说话…（中文）' : '';
+  els.voiceBar.innerHTML = on ? '<span class="live-dot"></span>正在聆听，请说话…' : '';
+}
+
+function setExpanded(on) {
+  if (!els) return;
+  els.drawer.classList.toggle('expanded', on);
+  const b = $('#ai-expand');
+  if (b) {
+    b.innerHTML = icon(on ? 'shrink' : 'expand');
+    b.title = on ? '还原窗口' : '放大窗口';
+  }
+  try { localStorage.setItem(EXPAND_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ }
 }
 
 /* --------------------------------- 对话 --------------------------------- */
