@@ -36,6 +36,11 @@ env:
 		echo "DNS_CRON_KEY=$$(openssl rand -hex 16)" >> $(ENV_FILE); \
 		echo "DNS_ADMIN_USER=admin" >> $(ENV_FILE); \
 		echo "DNS_ADMIN_PASS=admin123" >> $(ENV_FILE); \
+		echo "" >> $(ENV_FILE); \
+		echo "# AI 诊断助手（可选，填入 Key 后启用）" >> $(ENV_FILE); \
+		echo "DNS_AI_BASE_URL=https://api.deepseek.com/v1" >> $(ENV_FILE); \
+		echo "DNS_AI_MODEL=deepseek-chat" >> $(ENV_FILE); \
+		echo "DNS_AI_API_KEY=" >> $(ENV_FILE); \
 	fi
 
 # 停止容器（不删数据）

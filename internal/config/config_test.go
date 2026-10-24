@@ -50,3 +50,18 @@ func TestSessionTTLDuration(t *testing.T) {
 		t.Fatalf("zero ttl should fall back to 24h")
 	}
 }
+
+func TestAIEnabled(t *testing.T) {
+	c := Default()
+	if c.AIEnabled() {
+		t.Fatal("默认未配置 APIKey 应禁用 AI")
+	}
+	c.AI.APIKey = "sk-test"
+	if !c.AIEnabled() {
+		t.Fatal("填入 APIKey 后应启用")
+	}
+	c.AI.BaseURL = ""
+	if c.AIEnabled() {
+		t.Fatal("缺少 BaseURL 应禁用")
+	}
+}
