@@ -22,6 +22,35 @@ const showForm = ref(false)
 const editing = ref(null)
 const form = ref({ sub: '@', type: 'A', line: '默认', value: '', ttl: 600, priority: '' })
 const showImportCsv = ref(false)
+
+const showProbe = ref(false)
+const probeData = ref(null)
+const probeLoading = ref(false)
+const PROBE_VERDICT = {
+  ok: { label: '已生效', cls: 'ok' },
+  mismatch: { label: '未完全生效', cls: 'pending' },
+  nxdomain: { label: '解析不存在', cls: 'fail' },
+  error: { label: '查询失败', cls: 'neutral' }
+}
+
+async function doProbe() {
+  if (probeLoading.value) return
+  showProbe.value = true
+  probeLoading.value = true
+  probeData.value = null
+  try {
+    probeData.value = await api.get(`/api/domains/${domainId.value}/probe`)
+  } catch (e) {
+    toast(e.message, 'err')
+    showProbe.value = false
+  } finally {
+    probeLoading.value = false
+  }
+}
+
+function probeEndpoints() {
+  return probeData.value?.items?.[0]?.results?.map((r) => r.name) || []
+}
 const csvText = ref('')
 
 const pages = computed(() => Math.max(1, Math.ceil(res.value.total / res.value.size)))
@@ -177,6 +206,7 @@ onMounted(load)
       <button class="btn" @click="importRemote">从云平台拉取</button>
       <button class="btn" @click="showImportCsv = true">导入 CSV</button>
       <button class="btn" @click="exportCsv">导出 CSV</button>
+      <button class="btn" @click="doProbe">生效检测</button>
       <span class="spacer"></span>
       <button class="btn danger" @click="batchDelete">删除选中</button>
     </div>
@@ -239,6 +269,44 @@ onMounted(load)
       <template #actions>
         <button class="btn" @click="showForm = false">取消</button>
         <button class="btn primary" @click="saveForm">保存</button>
+      </template>
+    </Modal>
+
+    <Modal v-if="showProbe" :title="`解析生效检测 - ${probeData?.domain || ''}`" wide
+           @close="showProbe = false; probeData = null">
+      <p class="hint">通过阿里 / 腾讯 / Google 公共 DNS 实际查询，仅检测默认线路。TTL 缓存期内（通常 10 分钟）可能仍是旧值。</p>
+      <div v-if="probeLoading" class="loading" style="padding:24px 0">检测中…</div>
+      <div v-else-if="probeData" class="panel scroll" style="margin-top:10px">
+        <table>
+          <thead>
+            <tr>
+              <th>记录</th><th>本地配置</th>
+              <th v-for="name in probeEndpoints()" :key="name">{{ name }}</th>
+              <th>结论</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="it in probeData.items" :key="it.sub + it.type">
+              <td><span class="badge neutral mono">{{ it.type }}</span> {{ it.sub }}</td>
+              <td class="wrap">{{ it.local.join(', ') }}</td>
+              <td v-for="res in it.results" :key="res.name" class="wrap">
+                <span v-if="res.status === 'error'" class="err-text">失败</span>
+                <span v-else-if="res.status === 'nxdomain'" class="badge fail">不存在</span>
+                <span v-else>{{ res.records.join(', ') || '-' }}</span>
+              </td>
+              <td>
+                <span class="badge" :class="PROBE_VERDICT[it.verdict]?.cls">
+                  {{ PROBE_VERDICT[it.verdict]?.label || it.verdict }}
+                </span>
+              </td>
+            </tr>
+            <tr v-if="!probeData.items.length"><td colspan="6" class="empty">暂无默认线路记录可检测</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <template #actions>
+        <button class="btn" @click="showProbe = false; probeData = null">关闭</button>
+        <button class="btn primary" :disabled="probeLoading" @click="doProbe">重新检测</button>
       </template>
     </Modal>
 
