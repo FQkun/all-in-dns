@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/loeia/all-in-dns/internal/notify"
 )
 
 // handleCron HTTP 定时任务入口（对齐原 cron.php）。
@@ -96,6 +98,13 @@ func (h *Handler) systemBackup(ctx context.Context, today string) error {
 	_, _ = h.db.ExecContext(ctx, `
 		DELETE FROM backups WHERE created_by='system' AND id NOT IN
 		(SELECT id FROM (SELECT id FROM backups WHERE created_by='system' ORDER BY id DESC LIMIT 30) t)`)
+
+	if h.notifier != nil {
+		h.notifier.Notify(ctx, notify.Event{
+			Type: notify.EventBackupDone, Level: "info",
+			Message: "每日自动备份完成，共 " + itoa(recordCount) + " 条记录",
+		})
+	}
 	return nil
 }
 

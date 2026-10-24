@@ -123,6 +123,7 @@ func runServe(args []string) int {
 	syncSvc := sync.New(db, lg, cfg.App.SecretKey, cfg.App.MaxRetry, cfg.App.RetryBaseDelay)
 	authSvc := auth.New(db, rdb, cfg.App.SecretKey, cfg.SessionTTLDuration())
 	h := handlers.New(db, rdb, authSvc, syncSvc, lg, cfg)
+	h.SetSyncNotifier(syncSvc)
 
 	return serve(cfg, os.DirFS("web/dist"), h.Routes())
 }
