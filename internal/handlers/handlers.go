@@ -72,6 +72,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("POST /api/domains/{id}/verify", h.verifyDomain)
 	mux.HandleFunc("POST /api/domains/{id}/repair", h.repairDomain)
 	mux.HandleFunc("POST /api/domains/{id}/toggle", h.toggleDomain)
+	mux.HandleFunc("GET /api/domains/{id}/probe", h.probeDomain)
 	mux.HandleFunc("GET /api/domains/{id}/accounts", h.domainAccounts)
 	mux.HandleFunc("POST /api/domains/{id}/bind", h.bindDomain)
 	mux.HandleFunc("POST /api/domains/{id}/unbind", h.unbindDomain)
