@@ -105,6 +105,8 @@ func newBase(ak, sk string, extra map[string]string) *baseProvider {
 		http: &http.Client{
 			Timeout: 15 * time.Second,
 			Transport: &http.Transport{
+				// 支持通过 HTTP(S)_PROXY 环境变量走代理（访问境外 API 必需）
+				Proxy:       http.ProxyFromEnvironment,
 				DialContext: (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
 			},
 		},

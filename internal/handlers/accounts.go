@@ -44,7 +44,7 @@ func (h *Handler) createAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	in := httpapi.Input(r)
 	providerName := str(in["provider"])
-	if !contains([]string{"tencent", "aliyun", "volc"}, providerName) {
+	if !contains([]string{"tencent", "aliyun", "volc", "spaceship"}, providerName) {
 		httpapi.Fail(w, http.StatusBadRequest, "无效的云厂商")
 		return
 	}

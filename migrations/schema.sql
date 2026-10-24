@@ -25,7 +25,7 @@ CREATE TABLE users (
 
 CREATE TABLE cloud_accounts (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  provider ENUM('tencent','aliyun','volc') NOT NULL,
+  provider ENUM('tencent','aliyun','volc','spaceship') NOT NULL,
   name VARCHAR(64) NOT NULL,
   access_key_id VARBINARY(512) NOT NULL,
   access_key_secret VARBINARY(1024) NOT NULL,
@@ -47,7 +47,7 @@ CREATE TABLE domain_providers (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   domain_id INT UNSIGNED NOT NULL,
   account_id INT UNSIGNED NOT NULL,
-  provider ENUM('tencent','aliyun','volc') NOT NULL,
+  provider ENUM('tencent','aliyun','volc','spaceship') NOT NULL,
   provider_domain_id VARCHAR(128) NULL,
   sync_enabled TINYINT NOT NULL DEFAULT 1,
   last_verify_at DATETIME NULL,
@@ -79,7 +79,7 @@ CREATE TABLE record_provider_map (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   record_id INT UNSIGNED NOT NULL,
   account_id INT UNSIGNED NOT NULL,
-  provider ENUM('tencent','aliyun','volc') NOT NULL,
+  provider ENUM('tencent','aliyun','volc','spaceship') NOT NULL,
   provider_record_id VARCHAR(128) NULL,
   sync_status ENUM('pending','success','failed','deleted') NOT NULL DEFAULT 'pending',
   sync_message VARCHAR(512) NULL,

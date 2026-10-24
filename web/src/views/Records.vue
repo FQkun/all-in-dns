@@ -5,7 +5,7 @@ import { api, download } from '../api'
 import { toast } from '../ui'
 import Modal from '../components/Modal.vue'
 
-const PROVIDER_LABEL = { tencent: '腾讯云', aliyun: '阿里云', volc: '火山引擎' }
+const PROVIDER_LABEL = { tencent: '腾讯云', aliyun: '阿里云', volc: '火山引擎', spaceship: 'Spaceship' }
 const TYPES = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SRV', 'CAA']
 
 const route = useRoute()

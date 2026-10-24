@@ -47,6 +47,11 @@ func ensureInit(cfg *config.Config) error {
 	}
 	defer db.Close()
 
+	// 迁移：确保 provider 枚举包含 spaceship（已有库升级）
+	if err := migrateProviderEnum(db); err != nil {
+		return fmt.Errorf("迁移 provider 枚举失败: %w", err)
+	}
+
 	var exists int
 	_ = db.QueryRow(`SELECT COUNT(*) FROM users WHERE username=?`, cfg.App.AdminUser).Scan(&exists)
 	if exists == 0 {
@@ -59,6 +64,25 @@ func ensureInit(cfg *config.Config) error {
 			return fmt.Errorf("创建管理员失败: %w", err)
 		}
 		fmt.Printf("已创建管理员: %s\n", cfg.App.AdminUser)
+	}
+	return nil
+}
+
+// migrateProviderEnum 已有库升级：确保 provider 枚举包含 spaceship。
+func migrateProviderEnum(db *sql.DB) error {
+	var colType string
+	err := db.QueryRow(`SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cloud_accounts' AND COLUMN_NAME='provider'`).Scan(&colType)
+	if err != nil {
+		return nil // 表不存在则跳过（首次安装会建新表）
+	}
+	if strings.Contains(colType, "spaceship") {
+		return nil
+	}
+	for _, t := range []string{"cloud_accounts", "domain_providers", "record_provider_map"} {
+		if _, err := db.Exec("ALTER TABLE " + t + " MODIFY provider ENUM('tencent','aliyun','volc','spaceship') NOT NULL"); err != nil {
+			return err
+		}
 	}
 	return nil
 }
