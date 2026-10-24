@@ -6,6 +6,7 @@ import { ui } from './ui'
 import { navItems } from './router'
 import { api } from './api'
 import Login from './views/Login.vue'
+import AiAssistant from './components/AiAssistant.vue'
 
 const router = useRouter()
 const whoami = computed(() => {
@@ -81,6 +82,8 @@ const icons = {
           <a class="author-link" href="https://github.com/FQkun/all-in-dns" target="_blank" rel="noopener">GitHub @FQkun</a>
         </footer>
       </main>
+
+      <AiAssistant />
     </template>
   </div>
 

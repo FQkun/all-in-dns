@@ -11,6 +11,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/loeia/all-in-dns/internal/ai"
 	"github.com/loeia/all-in-dns/internal/auth"
 	"github.com/loeia/all-in-dns/internal/config"
 	"github.com/loeia/all-in-dns/internal/database"
@@ -22,17 +23,24 @@ import (
 
 // Handler 聚合各依赖。
 type Handler struct {
-	db     *database.DB
-	redis  *redis.Client
-	auth   *auth.Service
-	sync   *sync.Service
-	logger *logger.Logger
-	cfg    *config.Config
+	db       *database.DB
+	redis    *redis.Client
+	auth     *auth.Service
+	sync     *sync.Service
+	logger   *logger.Logger
+	cfg      *config.Config
+	aiClient *ai.Client
+	aiExec   *ai.Executor
 }
 
 // New 构造 Handler。
 func New(db *database.DB, r *redis.Client, a *auth.Service, s *sync.Service, lg *logger.Logger, cfg *config.Config) *Handler {
-	return &Handler{db: db, redis: r, auth: a, sync: s, logger: lg, cfg: cfg}
+	h := &Handler{db: db, redis: r, auth: a, sync: s, logger: lg, cfg: cfg}
+	if cfg.AIEnabled() {
+		h.aiClient = ai.NewClient(cfg.AI.BaseURL, cfg.AI.APIKey, cfg.AI.Model)
+		h.aiExec = ai.NewExecutor(db)
+	}
+	return h
 }
 
 // apiError 业务错误（带 HTTP 状态码）。
@@ -101,6 +109,9 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("POST /api/backups/{id}/restore", h.restoreBackup)
 
 	mux.HandleFunc("GET /api/monitor/summary", h.monitorSummary)
+
+	// AI 诊断助手
+	mux.HandleFunc("POST /api/ai/chat", h.aiChat)
 
 	// 定时任务 HTTP 入口（对齐原 cron.php）
 	mux.HandleFunc("GET /cron", h.handleCron)
