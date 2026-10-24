@@ -1,14 +1,18 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="light">
-  <link rel="icon" href="data:,">
-  <title>DNS 统一管理平台</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+<title>DNS 控制台 · 四云统一解析</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%234f46e5'/%3E%3Cpath d='M13 5 6.5 13.5H11l-1 5.5 6.5-8.5H12L13 5Z' fill='white'/%3E%3C/svg%3E">
 </head>
 <body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.js"></script>
+<div id="app"><div class="boot">正在加载控制台…</div></div>
+<div id="toasts" class="toasts"></div>
+<div id="modal-root"></div>
+<div id="ai-root"></div>
+<script type="module" src="/src/main.js"></script>
 </body>
 </html>
