@@ -5,7 +5,7 @@ import { toast } from '../ui'
 import { userState, isAdmin } from '../auth'
 import Modal from '../components/Modal.vue'
 
-const PROVIDER_LABEL = { tencent: '腾讯云', aliyun: '阿里云', volc: '火山引擎' }
+const PROVIDER_LABEL = { tencent: '腾讯云', aliyun: '阿里云', volc: '火山引擎', spaceship: 'Spaceship' }
 
 const rows = ref([])
 const loading = ref(false)
@@ -95,6 +95,7 @@ onMounted(load)
           <option value="tencent">腾讯云</option>
           <option value="aliyun">阿里云</option>
           <option value="volc">火山引擎</option>
+          <option value="spaceship">Spaceship</option>
         </select>
       </div>
       <div class="field"><label>名称</label><input v-model="form.name" placeholder="如：主账号"></div>
