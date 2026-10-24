@@ -43,6 +43,8 @@ func New(account Account, secretKey string) (Provider, error) {
 		return newAliyun(ak, sk, extra), nil
 	case "volc":
 		return newVolc(ak, sk, extra), nil
+	case "spaceship":
+		return newSpaceship(ak, sk, extra), nil
 	default:
 		return nil, providerErrorf("未知云厂商: %s", account.Provider)
 	}

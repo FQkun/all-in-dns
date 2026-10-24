@@ -4,7 +4,7 @@ import { api } from '../api'
 import { toast } from '../ui'
 import Modal from '../components/Modal.vue'
 
-const PROVIDER_LABEL = { tencent: '腾讯云', aliyun: '阿里云', volc: '火山引擎' }
+const PROVIDER_LABEL = { tencent: '腾讯云', aliyun: '阿里云', volc: '火山引擎', spaceship: 'Spaceship' }
 const ACT_LABEL = { create: '新增', update: '修改', delete: '删除' }
 
 const s = ref({})
