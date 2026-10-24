@@ -15,6 +15,7 @@ import (
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/loeia/all-in-dns/internal/ai"
 	"github.com/loeia/all-in-dns/internal/auth"
 	"github.com/loeia/all-in-dns/internal/config"
 	"github.com/loeia/all-in-dns/internal/database"
@@ -285,5 +286,63 @@ func TestExportCSV(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), `"www","A","默认","1.2.3.4"`) {
 		t.Fatalf("CSV 内容异常: %s", w.Body.String())
+	}
+}
+
+func TestAIChatNotConfigured(t *testing.T) {
+	env := setupEnv(t)
+	h := env.h.Routes()
+	token := login(t, h)
+
+	// 未配置 AI 时应友好降级（503），而不是 500
+	w := do(h, "POST", "/api/ai/chat", `{"message":"最近同步为什么失败"}`, token)
+	if w.Code != 503 {
+		t.Fatalf("未配置 AI 应返回 503，got %d %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "未配置") {
+		t.Fatalf("提示信息异常: %s", w.Body.String())
+	}
+}
+
+func TestAIToolsQueryData(t *testing.T) {
+	env := setupEnv(t)
+	h := env.h.Routes()
+	token := login(t, h)
+
+	do(h, "POST", "/api/domains", `{"name":"ai-tool-test.com"}`, token)
+	do(h, "POST", "/api/domains/1/records", `{"sub":"www","type":"A","line":"默认","value":"1.2.3.4","ttl":600}`, token)
+
+	exec := ai.NewExecutor(env.db)
+
+	// list_domains 应返回刚建的域名
+	out, err := exec.Execute(context.Background(), "list_domains", "{}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "ai-tool-test.com") {
+		t.Fatalf("list_domains 未返回域名: %s", out)
+	}
+
+	// get_domain_status 应返回该域名
+	out, err = exec.Execute(context.Background(), "get_domain_status", `{"domain":"ai-tool-test.com"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "ai-tool-test.com") {
+		t.Fatalf("get_domain_status 结果异常: %s", out)
+	}
+
+	// list_records 应返回记录
+	out, err = exec.Execute(context.Background(), "list_records", `{"domain":"ai-tool-test.com"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "1.2.3.4") {
+		t.Fatalf("list_records 未返回记录: %s", out)
+	}
+
+	// 未知工具应报错
+	if _, err := exec.Execute(context.Background(), "drop_table", "{}"); err == nil {
+		t.Fatal("未知工具应报错")
 	}
 }

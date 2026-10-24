@@ -41,11 +41,19 @@ type Redis struct {
 	Prefix string `json:"prefix"`
 }
 
+// AI 大模型配置（OpenAI 兼容接口，可选）。
+type AI struct {
+	BaseURL string `json:"base_url"` // 如 https://api.deepseek.com/v1
+	APIKey  string `json:"api_key"`
+	Model   string `json:"model"` // 如 deepseek-chat / qwen-plus / gpt-4o-mini
+}
+
 // Config 总配置。
 type Config struct {
 	App   App   `json:"app"`
 	DB    DB    `json:"db"`
 	Redis Redis `json:"redis"`
+	AI    AI    `json:"ai"`
 
 	// 运行时注入（非配置文件项）
 	Addr     string `json:"-"` // HTTP 监听地址
@@ -67,9 +75,18 @@ func Default() *Config {
 		},
 		DB:    DB{Port: 3306, Charset: "utf8mb4"},
 		Redis: Redis{Port: 6379, Prefix: "dns:"},
-		Addr:  ":8080",
-		Mode:  "dev",
+		AI: AI{
+			BaseURL: "https://api.deepseek.com/v1",
+			Model:   "deepseek-chat",
+		},
+		Addr: ":8080",
+		Mode: "dev",
 	}
+}
+
+// AIEnabled AI 是否已配置（有 APIKey 才启用）。
+func (c *Config) AIEnabled() bool {
+	return c.AI.APIKey != "" && c.AI.BaseURL != "" && c.AI.Model != ""
 }
 
 // FromEnv 用默认值 + 环境变量构造配置（环境变量由 godotenv 从 .env 加载）。
@@ -121,6 +138,15 @@ func applyEnv(c *Config) {
 	}
 	if v := os.Getenv("DNS_ADMIN_PASS"); v != "" {
 		c.App.AdminPass = v
+	}
+	if v := os.Getenv("DNS_AI_BASE_URL"); v != "" {
+		c.AI.BaseURL = v
+	}
+	if v := os.Getenv("DNS_AI_API_KEY"); v != "" {
+		c.AI.APIKey = v
+	}
+	if v := os.Getenv("DNS_AI_MODEL"); v != "" {
+		c.AI.Model = v
 	}
 }
 
