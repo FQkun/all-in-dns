@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"strings"
 	"encoding/json"
 	"fmt"
 
@@ -307,6 +308,13 @@ func (s *Service) failJob(ctx context.Context, job *queueJob, message string, co
 		status, retry, truncateRunes(message, 500), delay, queueID)
 	s.markMap(ctx, recordID, accountID, job.Provider, "failed", message, nil)
 	s.logger.Sync(ctx, &recordID, accountID, job.Provider, job.Action, false, message, costMs)
+
+	// 最终失败（不再重试）时才通知，避免重试期间刷屏
+	if failed && s.notifyFn != nil {
+		p := parsePayload(job.Payload)
+		record := strings.TrimSpace(p.Record.Sub + " " + p.Record.Type + " " + p.Record.Value)
+		s.notifyFn(ctx, "sync_failed", p.Domain, job.Provider, record, message)
+	}
 
 	return Result{QueueID: queueID, Provider: job.Provider, Status: "failed", Message: message, WillRetry: !failed}
 }

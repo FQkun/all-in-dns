@@ -21,6 +21,8 @@ type Service struct {
 	secretKey string
 	maxRetry  int
 	retryBase int
+	// notifyFn 通知回调（事件类型/域名/平台/记录/消息），为 nil 时不通知
+	notifyFn func(ctx context.Context, eventType, domain, provider, record, message string)
 }
 
 // New 构造 Service。
@@ -32,6 +34,11 @@ func New(db *database.DB, lg *logger.Logger, secretKey string, maxRetry, retryBa
 		retryBase = 60
 	}
 	return &Service{db: db, logger: lg, secretKey: secretKey, maxRetry: maxRetry, retryBase: retryBase}
+}
+
+// SetNotifier 注入通知回调（同步最终失败时触发）。
+func (s *Service) SetNotifier(fn func(ctx context.Context, eventType, domain, provider, record, message string)) {
+	s.notifyFn = fn
 }
 
 // Result 单个队列任务的执行结果。

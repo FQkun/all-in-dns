@@ -2,6 +2,7 @@
 CREATE DATABASE IF NOT EXISTS dns_manager DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE dns_manager;
 
+DROP TABLE IF EXISTS notify_channels;
 DROP TABLE IF EXISTS backups;
 DROP TABLE IF EXISTS settings;
 DROP TABLE IF EXISTS operation_logs;
@@ -142,6 +143,16 @@ CREATE TABLE backups (
   is_gzip TINYINT NOT NULL DEFAULT 0,
   record_count INT UNSIGNED NOT NULL DEFAULT 0,
   created_by VARCHAR(64) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE notify_channels (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(64) NOT NULL,
+  type ENUM('wecom','feishu','dingtalk','webhook') NOT NULL,
+  config TEXT NOT NULL,
+  events TEXT NOT NULL,
+  enabled TINYINT NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
