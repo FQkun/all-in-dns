@@ -51,6 +51,10 @@ func ensureInit(cfg *config.Config) error {
 	if err := migrateProviderEnum(db); err != nil {
 		return fmt.Errorf("迁移 provider 枚举失败: %w", err)
 	}
+	// 迁移：通知渠道表（已有库升级）
+	if err := migrateNotifyChannels(db); err != nil {
+		return fmt.Errorf("迁移通知渠道表失败: %w", err)
+	}
 
 	var exists int
 	_ = db.QueryRow(`SELECT COUNT(*) FROM users WHERE username=?`, cfg.App.AdminUser).Scan(&exists)
@@ -85,6 +89,20 @@ func migrateProviderEnum(db *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+// migrateNotifyChannels 创建通知渠道表（幂等）。
+func migrateNotifyChannels(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS notify_channels (
+		id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+		name VARCHAR(64) NOT NULL,
+		type ENUM('wecom','feishu','dingtalk','webhook') NOT NULL,
+		config TEXT NOT NULL,
+		events TEXT NOT NULL,
+		enabled TINYINT NOT NULL DEFAULT 1,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	) ENGINE=InnoDB`)
+	return err
 }
 
 // runSchema 导入 schema.sql：替换库名后逐条执行。

@@ -17,6 +17,7 @@ import (
 	"github.com/loeia/all-in-dns/internal/database"
 	"github.com/loeia/all-in-dns/internal/httpapi"
 	"github.com/loeia/all-in-dns/internal/logger"
+	"github.com/loeia/all-in-dns/internal/notify"
 	"github.com/loeia/all-in-dns/internal/redis"
 	"github.com/loeia/all-in-dns/internal/sync"
 )
@@ -31,11 +32,12 @@ type Handler struct {
 	cfg      *config.Config
 	aiClient *ai.Client
 	aiExec   *ai.Executor
+	notifier *notify.Notifier
 }
 
 // New 构造 Handler。
 func New(db *database.DB, r *redis.Client, a *auth.Service, s *sync.Service, lg *logger.Logger, cfg *config.Config) *Handler {
-	h := &Handler{db: db, redis: r, auth: a, sync: s, logger: lg, cfg: cfg}
+	h := &Handler{db: db, redis: r, auth: a, sync: s, logger: lg, cfg: cfg, notifier: notify.New(db, r)}
 	if cfg.AIEnabled() {
 		h.aiClient = ai.NewClient(cfg.AI.BaseURL, cfg.AI.APIKey, cfg.AI.Model)
 		h.aiExec = ai.NewExecutor(db)
@@ -114,10 +116,31 @@ func (h *Handler) Routes() http.Handler {
 	// AI 诊断助手
 	mux.HandleFunc("POST /api/ai/chat", h.aiChat)
 
+	// 通知渠道
+	mux.HandleFunc("GET /api/notify/events", h.listNotifyEvents)
+	mux.HandleFunc("GET /api/notify/channels", h.listNotifyChannels)
+	mux.HandleFunc("POST /api/notify/channels", h.createNotifyChannel)
+	mux.HandleFunc("PUT /api/notify/channels/{id}", h.updateNotifyChannel)
+	mux.HandleFunc("DELETE /api/notify/channels/{id}", h.deleteNotifyChannel)
+	mux.HandleFunc("POST /api/notify/channels/{id}/test", h.testNotifyChannel)
+
 	// 定时任务 HTTP 入口（对齐原 cron.php）
 	mux.HandleFunc("GET /cron", h.handleCron)
 
 	return httpapi.Chain(mux, httpapi.Recover, httpapi.NoCache)
+}
+
+// SetSyncNotifier 把通知器接入同步引擎（同步最终失败时触发通知）。
+func (h *Handler) SetSyncNotifier(s *sync.Service) {
+	if h.notifier == nil {
+		return
+	}
+	s.SetNotifier(func(ctx context.Context, eventType, domain, provider, record, message string) {
+		h.notifier.Notify(ctx, notify.Event{
+			Type: eventType, Level: "error",
+			Domain: domain, Provider: provider, Record: record, Message: message,
+		})
+	})
 }
 
 // ---- 记录输入校验（对齐 routes.php 闭包） ----

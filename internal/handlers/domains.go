@@ -9,6 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/loeia/all-in-dns/internal/httpapi"
+	"github.com/loeia/all-in-dns/internal/notify"
 )
 
 var reDomain = regexp.MustCompile(`^([a-z0-9-]+\.)+[a-z]{2,}$`)
@@ -103,6 +104,12 @@ func (h *Handler) createDomain(w http.ResponseWriter, r *http.Request) {
 			_, _ = h.db.ExecContext(ctx,
 				`UPDATE domain_providers SET provider_domain_id=? WHERE domain_id=? AND account_id=?`,
 				pid, domainID, acc.ID)
+		}
+		if okStatus != "ok" && h.notifier != nil {
+			h.notifier.Notify(ctx, notify.Event{
+				Type: notify.EventVerifyFailed, Level: "warning",
+				Domain: domain, Provider: acc.Provider, Message: msg,
+			})
 		}
 	}
 
@@ -287,6 +294,13 @@ func (h *Handler) bindDomain(w http.ResponseWriter, r *http.Request) {
 		_, _ = h.db.ExecContext(ctx,
 			`UPDATE domain_providers SET provider_domain_id=? WHERE domain_id=? AND account_id=?`,
 			pid, id, accountID)
+	}
+
+	if okStatus != "ok" && h.notifier != nil {
+		h.notifier.Notify(ctx, notify.Event{
+			Type: notify.EventVerifyFailed, Level: "warning",
+			Domain: domainName, Provider: acc.Provider, Message: msg,
+		})
 	}
 
 	h.logger.Op(ctx, &u.ID, u.Username, "domain.bind", strconv.Itoa(id),

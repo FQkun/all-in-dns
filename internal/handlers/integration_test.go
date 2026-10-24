@@ -346,3 +346,51 @@ func TestAIToolsQueryData(t *testing.T) {
 		t.Fatal("未知工具应报错")
 	}
 }
+
+func TestNotifyChannelCRUD(t *testing.T) {
+	env := setupEnv(t)
+	h := env.h.Routes()
+	token := login(t, h)
+
+	// 创建
+	w := do(h, "POST", "/api/notify/channels",
+		`{"name":"运维群","type":"wecom","url":"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=secret123","events":["sync_failed"]}`, token)
+	if w.Code != 200 {
+		t.Fatalf("创建渠道失败: %d %s", w.Code, w.Body.String())
+	}
+
+	// 列表 + URL 脱敏
+	w = do(h, "GET", "/api/notify/channels", "", token)
+	if !strings.Contains(w.Body.String(), "运维群") {
+		t.Fatalf("列表未返回渠道: %s", w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "secret123") {
+		t.Fatalf("Webhook URL 未脱敏: %s", w.Body.String())
+	}
+
+	// 更新为停用
+	w = do(h, "PUT", "/api/notify/channels/1", `{"enabled":false}`, token)
+	if w.Code != 200 {
+		t.Fatalf("更新失败: %d %s", w.Code, w.Body.String())
+	}
+	w = do(h, "GET", "/api/notify/channels", "", token)
+	if !strings.Contains(w.Body.String(), `"enabled":0`) {
+		t.Fatalf("停用未生效: %s", w.Body.String())
+	}
+
+	// 事件列表
+	w = do(h, "GET", "/api/notify/events", "", token)
+	if !strings.Contains(w.Body.String(), "sync_failed") {
+		t.Fatalf("事件列表异常: %s", w.Body.String())
+	}
+
+	// 删除
+	w = do(h, "DELETE", "/api/notify/channels/1", "", token)
+	if w.Code != 200 {
+		t.Fatalf("删除失败: %d", w.Code)
+	}
+	w = do(h, "GET", "/api/notify/channels", "", token)
+	if strings.Contains(w.Body.String(), "运维群") {
+		t.Fatalf("删除后仍存在: %s", w.Body.String())
+	}
+}
