@@ -2,6 +2,7 @@
 import { ref, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api'
+import { renderMarkdown } from '../markdown'
 
 const route = useRoute()
 const open = ref(false)
@@ -123,7 +124,9 @@ function toggle() {
 
         <div v-for="(m, i) in messages" :key="i" class="ai-msg" :class="m.role">
           <div v-if="m.role === 'assistant'" class="ai-msg-avatar">AI</div>
-          <div class="ai-bubble" :class="{ error: m.error }">{{ m.content }}</div>
+          <div v-if="m.error" class="ai-bubble error">{{ m.content }}</div>
+          <div v-else-if="m.role === 'assistant'" class="ai-bubble markdown" v-html="renderMarkdown(m.content)"></div>
+          <div v-else class="ai-bubble">{{ m.content }}</div>
         </div>
 
         <div v-if="loading" class="ai-msg assistant">
