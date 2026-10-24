@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { api } from '../api'
-import { toast } from '../ui'
+import { toast, uiConfirm } from '../ui'
 
 const rows = ref([])
 const loading = ref(false)
@@ -32,7 +32,7 @@ async function create() {
 }
 
 async function restore(b) {
-  if (!confirm('恢复将覆盖当前全部域名/解析记录数据，确认?')) return
+  if (!(await uiConfirm({ title: '恢复备份', message: '恢复将覆盖当前全部域名与解析记录数据，此操作不可撤销。', confirmText: '确认恢复', danger: true }))) return
   try {
     await api.post(`/api/backups/${b.id}/restore`)
     toast('恢复完成', 'ok')
@@ -42,7 +42,7 @@ async function restore(b) {
 }
 
 async function del(b) {
-  if (!confirm('确认删除该备份?')) return
+  if (!(await uiConfirm({ title: '删除备份', message: '确认删除该备份？删除后不可恢复。', confirmText: '删除', danger: true }))) return
   try {
     await api.post('/api/backups/delete', { ids: [b.id] })
     toast('已删除', 'ok')
@@ -55,7 +55,7 @@ async function del(b) {
 async function delSelected() {
   const ids = [...checked.value]
   if (!ids.length) return
-  if (!confirm(`确认删除所选 ${ids.length} 个备份?`)) return
+  if (!(await uiConfirm({ title: '删除备份', message: `确认删除所选 ${ids.length} 个备份？`, confirmText: '删除', danger: true }))) return
   try {
     await api.post('/api/backups/delete', { ids })
     toast('已删除', 'ok')

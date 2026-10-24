@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { api } from '../api'
-import { toast } from '../ui'
+import { toast, uiConfirm } from '../ui'
 import { userState, isAdmin } from '../auth'
 import Modal from '../components/Modal.vue'
 
@@ -46,7 +46,7 @@ async function testAccount(a) {
 }
 
 async function delAccount(a) {
-  if (!confirm('确认删除该账号?')) return
+  if (!(await uiConfirm({ title: '删除账号', message: '删除该云账号将同时解除它与所有域名的绑定，确认继续？', confirmText: '删除', danger: true }))) return
   try {
     await api.del(`/api/accounts/${a.id}`)
     toast('已删除', 'ok')

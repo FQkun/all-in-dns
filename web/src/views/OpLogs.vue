@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { api } from '../api'
-import { toast } from '../ui'
+import { toast, uiConfirm } from '../ui'
 
 const logs = ref([])
 const loading = ref(false)
@@ -18,7 +18,7 @@ async function load() {
 }
 
 async function clearLogs() {
-  if (!confirm('确认清空全部操作日志?')) return
+  if (!(await uiConfirm({ title: '清空操作日志', message: '确认清空全部操作日志？此操作不可恢复。', confirmText: '清空', danger: true }))) return
   try {
     await api.del('/api/operation-logs')
     toast('已清空', 'ok')
