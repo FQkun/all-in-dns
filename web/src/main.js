@@ -1,6 +1,2 @@
-import { createApp } from 'vue'
-import App from './App.vue'
-import router from './router'
-import './styles/style.css'
-
-createApp(App).use(router).mount('#root')
+// 入口：挂载应用（样式与视图在 app.js 内组合）
+import './app.js';
