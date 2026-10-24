@@ -1,0 +1,40 @@
+# DNS 统一管理平台 - MySQL + Redis
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: dns-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DNS_DB_PASS}
+      MYSQL_DATABASE: ${DNS_DB_NAME:-dns_manager}
+      MYSQL_ROOT_HOST: "%"
+    ports:
+      - "${DNS_DB_PORT:-3307}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7
+    container_name: dns-redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${DNS_REDIS_AUTH}
+    command: ["redis-server", "--requirepass", "${DNS_REDIS_AUTH}", "--appendonly", "yes"]
+    ports:
+      - "${DNS_REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $${REDIS_PASSWORD} ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  mysql_data:
+  redis_data:

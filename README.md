@@ -18,7 +18,7 @@
 
 ## 功能特性
 
-- **三云同步**：修改一次记录，实时同步到腾讯云 / 阿里云 / 火山引擎，支持 A / AAAA / CNAME / MX / TXT / NS / SRV / CCAA 全类型记录
+- **三云同步**：修改一次记录，实时同步到腾讯云 / 阿里云 / 火山引擎，支持 A / AAAA / CNAME / MX / TXT / NS / SRV / CAA 全类型记录
 - **覆盖式同步引擎**：同步队列 + 指数退避自动重试 + 「远端已存在」自动登记，避免重复写入与死循环报错
 - **按厂商启用**：一个域名可以只在部分云平台有 NS（`domain_providers` 按厂商独立开关）
 - **写入前冲突校验**：同域名 / 主机 / 线路下 A、AAAA 与 CNAME 不共存，本地先拦截，避免三平台同步全部失败
@@ -26,60 +26,85 @@
 - **云账号安全**：AccessKey / Secret AES-256-GCM 加密入库，列表只显示掩码
 - **备份与恢复**：每日自动备份（保留 30 份），支持备份映射恢复
 - **导入 / 导出**：解析记录批量导入导出
-- **认证与审计**：登录认证（可选阿里云 ESA 滑动验证码）、操作日志、同步日志
-- **响应式 UI**：原生 JS 单页应用，无框架依赖
+- **认证与审计**：登录认证、操作日志、同步日志
 
 ## 技术栈
 
-- PHP 8.2+
-- MySQL 5.7+ / 8.0
-- Redis
-- Nginx + PHP-FPM
-
-## 安装
-
-1. 将代码部署到站点目录，Web 根目录指向 `public/`
-2. 确保 `src/config/` 与 `storage/` 目录可写
-3. 在数据库中提前创建好库（如 `dns_manager`）
-4. 浏览器访问 `/install.php`，按向导完成：
-   - 环境检测（PHP 版本 / 扩展 / 目录权限）
-   - 配置 MySQL / Redis 连接，可勾选启用阿里云 ESA 安全验证码
-   - 自动导入 `database/schema.sql`（重复导入会先删旧表）
-   - 创建管理员账号
-5. 安装完成后 `install.php` 自动锁定，请保留锁定状态
-
-### 启用 ESA 验证码（可选）
-
-安装向导第 2 步勾选「启用阿里云 ESA 安全验证码」，填入 Scene ID 与 Prefix。
-控制台配置时，「需验签的接口（URI）」填写 `你的域名/*` 即可。
-配置地址：https://esa.console.aliyun.com/captcha/configuration
-
-不启用时登录页不做验证码校验。
-
-## 定时任务
-
-在宝塔等面板添加「访问 URL」计划任务，每分钟访问：
-
-```
-https://你的域名/cron.php?key=安装时自动生成的cron_key
-```
-
-每次执行重试失败队列；每天首个执行触发自动备份。
+- 后端：Go 1.22+（标准库 `net/http` + sqlx + go-redis）
+- 前端：Vue 3 + Vite + Vue Router（无重型 UI 库，沿用自研样式）
+- 数据库：MySQL 5.7+ / 8.0
+- 缓存：Redis
 
 ## 目录结构
 
 ```
-public/            Web 根目录（index.php 前端控制器、install.php 安装向导、cron.php 计划任务入口）
-  assets/          前端 SPA（原生 JS / CSS）
-src/
-  config/          config.php（安装时生成，含数据库 / Redis / 密钥配置）
-  Core/            Database、RedisClient、Crypto、Auth、Logger、Router、SyncService
-  Core/Providers/  腾讯云（TC3 签名）、阿里云（RPC HMAC-SHA1）、火山引擎（V4 签名）
-  api/             routes.php（/api/* 路由）
-database/          schema.sql（可重复导入）
-cron/              retry.php、backup.php（CLI 备用脚本）
+cmd/dnsctl/          Go 入口（dev / serve 子命令）
+internal/            后端实现
+  config/            配置
+  database/          MySQL（sqlx）
+  redis/             Redis 封装
+  crypto/            AES-256-GCM
+  auth/              会话与鉴权
+  logger/            操作/同步日志
+  httpapi/           响应封装与中间件
+  provider/          云厂商适配（腾讯/阿里/火山签名）
+  sync/              同步引擎
+  handlers/          /api/* 路由
+  mock/              内存 mock（前端联调用）
+  server/            HTTP 组装
+web/                 Vue 3 前端
+  src/views/         七个视图 + 登录
+  src/api.js         API 客户端（code/msg/data）
+  src/styles/        样式
+migrations/schema.sql 数据库结构（安装时导入）
 ```
 
+## 快速开始
+
+### 开发（前后端分离）
+
+```bash
+# 终端 1：后端（mock API，监听 8080）
+make dev-api
+
+# 终端 2：前端（Vite，监听 5173，/api 代理到 8080）
+make dev-web
+```
+
+浏览器访问 <http://localhost:5173>，mock 数据覆盖全部视图。
+
+### 联调真实后端
+
+```bash
+# 后端接真实 MySQL/Redis（见下方环境变量），监听 8080
+DNS_DB_HOST=... DNS_DB_USER=... DNS_SECRET_KEY=... go run ./cmd/dnsctl serve
+
+# 前端代理到真实后端
+make dev-web
+```
+
+### 生产部署
+
+```bash
+make build          # 构建前端 + 单二进制 bin/dnsctl
+
+# 配置环境变量后启动
+DNS_DB_HOST=127.0.0.1 DNS_DB_PORT=3306 DNS_DB_NAME=dns_manager \
+DNS_DB_USER=root DNS_DB_PASS=xxx \
+DNS_REDIS_HOST=127.0.0.1 DNS_REDIS_PORT=6379 \
+DNS_SECRET_KEY=<32位以上密钥> DNS_CRON_KEY=<cron密钥> \
+./bin/dnsctl serve --addr :8080
+```
+
+## 环境变量
+
+| 变量 | 说明 | 默认 |
+|---|---|---|
+| `DNS_DB_HOST` / `DNS_DB_PORT` / `DNS_DB_NAME` / `DNS_DB_USER` / `DNS_DB_PASS` | MySQL 连接 | 127.0.0.1:3306/dns_manager |
+| `DNS_REDIS_HOST` / `DNS_REDIS_PORT` / `DNS_REDIS_AUTH` | Redis 连接 | 127.0.0.1:6379 |
+| `DNS_SECRET_KEY` | AK/SK 加密密钥（≥32 字符） | — |
+| `DNS_CRON_KEY` | 定时任务触发密钥 | — |
+| `DNS_CAPTCHA_SCENE` / `DNS_CAPTCHA_PREFIX` | 阿里云 ESA 验证码（可选） | 空 |
 
 ## License
 
