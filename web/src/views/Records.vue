@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, download } from '../api'
-import { toast } from '../ui'
+import { toast, uiConfirm } from '../ui'
 import Modal from '../components/Modal.vue'
 
 const PROVIDER_LABEL = { tencent: '腾讯云', aliyun: '阿里云', volc: '火山引擎' }
@@ -79,7 +79,7 @@ async function saveForm() {
 }
 
 async function delRecord(r) {
-  if (!confirm('删除该记录（并从各云平台删除）?')) return
+  if (!(await uiConfirm({ title: '删除记录', message: '将删除该记录并从所有已绑定的云平台同步删除，确认继续？', confirmText: '删除', danger: true }))) return
   try {
     const res2 = await api.del(`/api/records/${r.id}`)
     const fails = (res2.sync || []).filter((s) => s.status === 'failed')
@@ -94,7 +94,7 @@ async function delRecord(r) {
 async function batchDelete() {
   const ids = [...checked.value]
   if (!ids.length) { toast('请先勾选要删除的记录', 'err'); return }
-  if (!confirm(`确认删除选中的 ${ids.length} 条记录?`)) return
+  if (!(await uiConfirm({ title: '批量删除', message: `确认删除选中的 ${ids.length} 条记录？将同步从各云平台删除。`, confirmText: '删除', danger: true }))) return
   try {
     const r = await api.post('/api/records/batch-delete', { ids })
     toast(r.pending?.length ? `已删除，${r.pending.length} 条记录等待云端重试` : '已删除', r.pending?.length ? 'err' : 'ok')

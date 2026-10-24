@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { api } from '../api'
-import { toast } from '../ui'
+import { toast, uiConfirm } from '../ui'
 import { isAdmin } from '../auth'
 
 const PROVIDER_LABEL = { tencent: '腾讯云', aliyun: '阿里云', volc: '火山引擎' }
@@ -35,7 +35,7 @@ async function retryNow() {
 }
 
 async function clearQueue() {
-  if (!confirm('确认删除全部待重试任务?')) return
+  if (!(await uiConfirm({ title: '删除重试任务', message: '确认删除全部待重试的同步任务？', confirmText: '删除', danger: true }))) return
   try {
     const r = await api.del('/api/sync/queue')
     toast(`已删除 ${r.count ?? 0} 个重试任务`, 'ok')
@@ -46,7 +46,7 @@ async function clearQueue() {
 }
 
 async function clearLogs() {
-  if (!confirm('确认清空全部同步日志?')) return
+  if (!(await uiConfirm({ title: '清空同步日志', message: '确认清空全部同步日志？此操作不可恢复。', confirmText: '清空', danger: true }))) return
   try {
     await api.del('/api/sync/logs')
     toast('已清空', 'ok')

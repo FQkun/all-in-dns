@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
-import { toast } from '../ui'
+import { toast, uiConfirm } from '../ui'
 import { isAdmin } from '../auth'
 import Modal from '../components/Modal.vue'
 
@@ -142,7 +142,7 @@ async function repair(rep, ids) {
 }
 
 async function delDomain(d) {
-  if (!confirm('删除域名及其全部本地解析记录（不影响云平台）?')) return
+  if (!(await uiConfirm({ title: '删除域名', message: '将删除该域名及其全部本地解析记录（不会删除云平台上的记录），确认继续？', confirmText: '删除', danger: true }))) return
   try {
     await api.del(`/api/domains/${d.id}`)
     load()

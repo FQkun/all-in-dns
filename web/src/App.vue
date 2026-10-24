@@ -2,11 +2,12 @@
 import { onMounted, computed } from 'vue'
 import { RouterView, useRouter } from 'vue-router'
 import { userState, getToken } from './auth'
-import { ui } from './ui'
+import { ui, resolveUiConfirm } from './ui'
 import { navItems } from './router'
 import { api } from './api'
 import Login from './views/Login.vue'
 import AiAssistant from './components/AiAssistant.vue'
+import Modal from './components/Modal.vue'
 
 const router = useRouter()
 const whoami = computed(() => {
@@ -86,6 +87,16 @@ const icons = {
       <AiAssistant />
     </template>
   </div>
+
+  <Modal v-if="ui.confirmState" :title="ui.confirmState.title" @close="resolveUiConfirm(false)">
+    <p class="confirm-msg">{{ ui.confirmState.message }}</p>
+    <template #actions>
+      <button class="btn" @click="resolveUiConfirm(false)">取消</button>
+      <button class="btn" :class="ui.confirmState.danger ? 'danger' : 'primary'" @click="resolveUiConfirm(true)">
+        {{ ui.confirmState.confirmText }}
+      </button>
+    </template>
+  </Modal>
 
   <div id="toast">
     <div v-for="t in ui.toasts" :key="t.id" class="toast-item" :class="t.type" @click="ui.toasts = ui.toasts.filter(x => x.id !== t.id)">
