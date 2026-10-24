@@ -1,0 +1,14 @@
+/bin/
+*.exe
+*.test
+
+web/node_modules/
+web/dist/
+
+.env
+config.json
+config.toml
+storage/
+*.log
+
+.DS_Store
