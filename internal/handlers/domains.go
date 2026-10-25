@@ -24,14 +24,32 @@ type domainRow struct {
 }
 
 func (h *Handler) listDomains(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.auth.RequireUser(r.Context(), w, r); !ok {
+	u, ok := h.auth.RequireUser(r.Context(), w, r)
+	if !ok {
 		return
 	}
 	rows := make([]domainRow, 0)
-	err := h.db.SelectContext(r.Context(), &rows, `
-		SELECT d.*, GROUP_CONCAT(CONCAT(dp.provider,':',IF(dp.sync_enabled=1,'on','off'))) AS providers
-		FROM domains d LEFT JOIN domain_providers dp ON dp.domain_id = d.id
-		GROUP BY d.id ORDER BY d.id`)
+
+	// 子账号隔离：非管理员只能看到 user_domains 中授权的域名
+	ids := h.grantedDomainIDs(r.Context(), u)
+	const baseSQL = `SELECT d.*, GROUP_CONCAT(CONCAT(dp.provider,':',IF(dp.sync_enabled=1,'on','off'))) AS providers
+		FROM domains d LEFT JOIN domain_providers dp ON dp.domain_id = d.id`
+	var err error
+	switch {
+	case ids == nil: // 不受限（admin 或 scope_all=1）
+		err = h.db.SelectContext(r.Context(), &rows,
+			baseSQL+` GROUP BY d.id ORDER BY d.id`)
+	case len(ids) == 0: // 未授权任何域名
+		httpapi.OK(w, rows)
+		return
+	default:
+		query, args, e := sqlx.In(baseSQL+` WHERE d.id IN (?) GROUP BY d.id ORDER BY d.id`, ids)
+		if e != nil {
+			httpapi.Error(w, e)
+			return
+		}
+		err = h.db.SelectContext(r.Context(), &rows, h.db.Rebind(query), args...)
+	}
 	if err != nil {
 		httpapi.Error(w, err)
 		return
@@ -41,7 +59,8 @@ func (h *Handler) listDomains(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createDomain(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	u, ok := h.auth.RequireRole(ctx, w, r, "admin", "operator")
+	// 新建域名涉及云账号与平台绑定，仅管理员可操作（子账号只能在授权域名内维护记录）
+	u, ok := h.auth.RequireRole(ctx, w, r, "admin")
 	if !ok {
 		return
 	}

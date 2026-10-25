@@ -127,7 +127,15 @@ func (h *Handler) Routes() http.Handler {
 	// 定时任务 HTTP 入口（对齐原 cron.php）
 	mux.HandleFunc("GET /cron", h.handleCron)
 
-	return httpapi.Chain(mux, httpapi.Recover, httpapi.NoCache)
+	// 子账号与审计日志（二次开发新增，仅 admin）
+	mux.HandleFunc("GET /api/users", h.listUsers)
+	mux.HandleFunc("POST /api/users", h.createUser)
+	mux.HandleFunc("PUT /api/users/{id}", h.updateUser)
+	mux.HandleFunc("DELETE /api/users/{id}", h.deleteUser)
+	mux.HandleFunc("GET /api/audit-logs", h.auditLogs)
+
+	// ScopeGuard：非管理员只能访问被授权的域名（子账号隔离）
+	return httpapi.Chain(h.ScopeGuard(mux), httpapi.Recover, httpapi.NoCache)
 }
 
 // SetSyncNotifier 把通知器接入同步引擎（同步最终失败时触发通知）。
