@@ -11,6 +11,7 @@ DROP TABLE IF EXISTS sync_queue;
 DROP TABLE IF EXISTS record_provider_map;
 DROP TABLE IF EXISTS records;
 DROP TABLE IF EXISTS domain_providers;
+DROP TABLE IF EXISTS user_domains;
 DROP TABLE IF EXISTS domains;
 DROP TABLE IF EXISTS cloud_accounts;
 DROP TABLE IF EXISTS users;
@@ -20,8 +21,18 @@ CREATE TABLE users (
   username VARCHAR(64) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   role ENUM('admin','operator','viewer') NOT NULL DEFAULT 'operator',
+  scope_all TINYINT NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_login_at DATETIME NULL
+) ENGINE=InnoDB;
+
+-- 子账号的域名授权（scope_all=0 时生效；admin 与 scope_all=1 的账号不受限）
+CREATE TABLE user_domains (
+  user_id INT UNSIGNED NOT NULL,
+  domain_id INT UNSIGNED NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, domain_id),
+  KEY idx_domain (domain_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE cloud_accounts (
