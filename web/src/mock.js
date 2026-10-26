@@ -22,6 +22,12 @@ const nextId = arr => (arr && arr.length ? Math.max(...arr.map(x => x.id)) + 1 :
 function seed() {
   const s = {
     user: { id: 1, username: 'admin', role: 'admin', last_login_at: now() },
+    users: [
+      { id: 1, username: 'admin', role: 'admin', scope_all: 1, created_at: ago(60 * 24 * 200), last_login_at: now(), domain_ids: [] },
+      { id: 2, username: 'zhang.wei', role: 'operator', scope_all: 0, created_at: ago(60 * 24 * 40), last_login_at: ago(180), domain_ids: [1] },
+      { id: 3, username: 'li.na', role: 'operator', scope_all: 0, created_at: ago(60 * 24 * 26), last_login_at: ago(1500), domain_ids: [2] },
+      { id: 4, username: 'guest.audit', role: 'viewer', scope_all: 0, created_at: ago(60 * 24 * 9), last_login_at: ago(60 * 24 * 3), domain_ids: [3, 4] },
+    ],
     accounts: [
       { id: 1, provider: 'tencent', name: '腾讯云 · 主账号', status: 1, created_at: ago(60 * 24 * 120), access_key_id_masked: 'AKID****4821' },
       { id: 2, provider: 'aliyun', name: '阿里云 · 生产账号', status: 1, created_at: ago(60 * 24 * 96), access_key_id_masked: 'LTAI****9102' },
@@ -142,6 +148,10 @@ function seed() {
     id: ops.length - i, user_id: 1, username: 'admin', action: o[0], target: o[1],
     detail: o[2], ip: '116.24.88.12', created_at: ago(o[3]),
   }));
+  // 子账号相关留痕
+  s.opLogs.unshift({ id: ops.length + 2, user_id: 1, username: 'admin', action: 'user.create', target: 'zhang.wei', detail: '{"role":"operator","domains":[1]}', ip: '116.24.88.12', created_at: ago(60 * 24 * 40) });
+  s.opLogs.unshift({ id: ops.length + 3, user_id: 1, username: 'admin', action: 'user.create', target: 'li.na', detail: '{"role":"operator","domains":[2]}', ip: '116.24.88.12', created_at: ago(60 * 24 * 26) });
+  s.opLogs.unshift({ id: ops.length + 4, user_id: 2, username: 'zhang.wei', action: 'record.create', target: 'example.com / api A', detail: '新增解析记录', ip: '116.24.88.31', created_at: ago(120) });
 
   s.backups = [
     { id: 3, name: '每日自动备份 ' + ago(720).slice(0, 10), record_count: s.records.length, created_by: 'system', created_at: ago(720) },
@@ -171,7 +181,11 @@ function load() {
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* ignore */ }
 }
-const touch = () => { if (!S) S = load() || seed(); return S; };
+const touch = () => {
+  if (!S) S = load() || seed();
+  if (!S.users) S.users = seed().users; // 兼容旧版 localStorage 缓存
+  return S;
+};
 
 /* ------------------------------- 工具 ------------------------------- */
 const bindingsOf = id => touch().bindings.filter(b => b.domain_id === +id);
@@ -621,6 +635,77 @@ route('POST', '/api/notify/channels/{id}/test', p => {
   op('notify.test', ch.name, '发送测试消息');
   save();
   return { ok: true };
+});
+
+/* ---------- 子账号与权限（演示实现） ---------- */
+route('GET', '/api/users', () => touch().users.map(u => ({
+  ...u,
+  domain_names: (u.domain_ids || [])
+    .map(id => (S.domains.find(d => d.id === id) || {}).name)
+    .filter(Boolean),
+})));
+
+route('POST', '/api/users', (p, q, b) => {
+  const username = String(b.username || '').trim();
+  if (!/^[A-Za-z0-9_.-]{3,32}$/.test(username)) fail('用户名需为 3~32 位字母、数字、下划线、点或短横线');
+  if (String(b.password || '').length < 6) fail('密码至少 6 位');
+  if (!['admin', 'operator', 'viewer'].includes(b.role)) fail('无效的角色');
+  if (S.users.some(u => u.username === username)) fail('用户名已被占用');
+  const id = nextId(S.users);
+  const scopeAll = b.scope_all ? 1 : 0;
+  S.users.push({
+    id, username, role: b.role, scope_all: scopeAll,
+    created_at: now(), last_login_at: null,
+    domain_ids: scopeAll ? [] : (Array.isArray(b.domain_ids) ? b.domain_ids.map(Number) : []),
+  });
+  op('user.create', username, JSON.stringify({ role: b.role, scope_all: scopeAll, domains: b.domain_ids || [] }));
+  save();
+  return { user_id: id };
+});
+
+route('PUT', '/api/users/{id}', (p, q, b) => {
+  const u = S.users.find(x => x.id === +p.id);
+  if (!u) fail('账号不存在', 404);
+  if (b.role && !['admin', 'operator', 'viewer'].includes(b.role)) fail('无效的角色');
+  if (b.password && String(b.password).length < 6) fail('密码至少 6 位');
+  if (b.role) u.role = b.role;
+  if (typeof b.scope_all === 'boolean') u.scope_all = b.scope_all ? 1 : 0;
+  if (Array.isArray(b.domain_ids)) u.domain_ids = b.domain_ids.map(Number);
+  op('user.update', u.username, JSON.stringify({ role: u.role, scope_all: u.scope_all, domains: u.domain_ids }));
+  save();
+  return null;
+});
+
+route('DELETE', '/api/users/{id}', p => {
+  const id = +p.id;
+  const u = S.users.find(x => x.id === id);
+  if (!u) fail('账号不存在', 404);
+  if (id === (S.user?.id || 1)) fail('不能删除当前登录的账号');
+  if (u.role === 'admin' && S.users.filter(x => x.role === 'admin').length <= 1) fail('至少保留一个管理员账号');
+  S.users = S.users.filter(x => x.id !== id);
+  op('user.delete', u.username, '');
+  save();
+  return null;
+});
+
+/* ---------- 审计日志（演示实现） ---------- */
+route('GET', '/api/audit-logs', (p, q) => {
+  const page = Math.max(1, +(q.page || 1));
+  const size = Math.min(200, Math.max(10, +(q.size || 50)));
+  let items = touch().opLogs.slice().sort((a, b) => b.id - a.id);
+  if (q.username) items = items.filter(l => l.username === q.username);
+  if (q.action) items = items.filter(l => String(l.action).startsWith(q.action));
+  if (q.q) {
+    const kw = String(q.q).toLowerCase();
+    items = items.filter(l => String(l.target || '').toLowerCase().includes(kw) || String(l.detail || '').toLowerCase().includes(kw));
+  }
+  if (q.from) items = items.filter(l => String(l.created_at).slice(0, 10) >= q.from);
+  if (q.to) items = items.filter(l => String(l.created_at).slice(0, 10) <= q.to);
+  const actions = [...new Set(S.opLogs.map(l => l.action))].sort();
+  return {
+    items: items.slice((page - 1) * size, page * size),
+    total: items.length, page, size, actions,
+  };
 });
 
 route('POST', '/api/ai/chat', (p, q, b) => {

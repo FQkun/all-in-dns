@@ -12,9 +12,10 @@ import * as domains from './views/domains.js';
 import * as records from './views/records.js';
 import * as accounts from './views/accounts.js';
 import * as sync from './views/sync.js';
-import * as oplogs from './views/oplogs.js';
 import * as backups from './views/backups.js';
 import * as notify from './views/notify.js';
+import * as users from './views/users.js';
+import * as audit from './views/audit.js';
 
 const NAV = [
   { group: '总览', items: [{ key: 'dashboard', label: '监控概览', href: '#/dashboard', icon: 'grid' }] },
@@ -27,23 +28,29 @@ const NAV = [
   {
     group: '运维', items: [
       { key: 'sync', label: '同步中心', href: '#/sync', icon: 'refresh' },
-      { key: 'oplogs', label: '操作日志', href: '#/oplogs', icon: 'doc' },
       { key: 'backups', label: '备份恢复', href: '#/backups', icon: 'box' },
     ]
   },
-  { group: '系统', items: [{ key: 'notify', label: '消息通知', href: '#/notify', icon: 'bell' }] },
+  {
+    group: '系统', items: [
+      { key: 'users', label: '账号与权限', href: '#/users', icon: 'users', admin: true },
+      { key: 'audit', label: '审计日志', href: '#/audit', icon: 'audit', admin: true },
+      { key: 'notify', label: '消息通知', href: '#/notify', icon: 'bell' },
+    ]
+  },
 ];
 
-const VIEWS = { dashboard, domains, records, accounts, sync, oplogs, backups, notify };
+const VIEWS = { dashboard, domains, records, accounts, sync, backups, notify, users, audit };
 const TITLES = {
   dashboard: ['监控概览', '四端同步状态、失败任务与解析生效情况一览'],
   domains: ['域名管理', ''],
   records: ['解析记录', ''],
   accounts: ['云账号', ''],
   sync: ['同步中心', '失败任务按指数退避自动重试，最多 5 次'],
-  oplogs: ['操作日志', ''],
   backups: ['备份恢复', '快照包含域名、绑定关系与全部解析记录'],
   notify: ['消息通知', '同步失败 / 验证失败 / 备份完成时推送到群机器人'],
+  users: ['账号与权限', ''],
+  audit: ['审计日志', '全站操作留痕：谁、什么时候、对什么做了什么'],
 };
 
 let SELF_ROUTE = null;
@@ -52,8 +59,12 @@ let SELF_ROUTE = null;
 function renderShell() {
   const initial = (state.user?.username || 'A').slice(0, 1).toUpperCase();
   const roleText = state.user?.role === 'admin' ? '管理员' : state.user?.role === 'operator' ? '运维' : '只读';
-  const navHtml = NAV.map(g => `<div class="nav-label">${g.group}</div>` + g.items.map(it =>
-    `<a href="${it.href}" data-key="${it.key}">${icon(it.icon)}<span>${it.label}</span></a>`).join('')).join('');
+  const navHtml = NAV.map(g => {
+    const items = g.items.filter(it => !it.admin || state.user?.role === 'admin');
+    if (!items.length) return '';
+    return `<div class="nav-label">${g.group}</div>` + items.map(it =>
+      `<a href="${it.href}" data-key="${it.key}">${icon(it.icon)}<span>${it.label}</span></a>`).join('');
+  }).join('');
 
   $('#app').innerHTML = `
   <div class="shell">
@@ -131,7 +142,10 @@ function parseHash() {
   else if (path.startsWith('/sync')) view = 'sync';
   else if (path.startsWith('/oplogs')) view = 'oplogs';
   else if (path.startsWith('/backups')) view = 'backups';
+  else if (path.startsWith('/oplogs')) view = 'audit'; // 旧入口并入审计日志
   else if (path.startsWith('/notify')) view = 'notify';
+  else if (path.startsWith('/users')) view = 'users';
+  else if (path.startsWith('/audit')) view = 'audit';
   return { view, id, query };
 }
 
