@@ -118,8 +118,7 @@ export async function render(el, route, force) {
             <td class="wrap mono">${esc(rec)}</td><td class="wrap" style="color:var(--bad)">${esc(f.last_error || '-')}</td>
             <td class="num">${f.retry_count} 次</td></tr>`;
         }).join('')}</tbody></table></div>`
-        : `<div class="card-b" style="display:flex;align-items:center;gap:10px;color:var(--ok)">${icon('shield')}
-            <span style="font-size:13px">当前没有失败任务，各平台记录保持一致。</span></div>`}
+        : `<div class="empty" style="color:var(--ok)">当前没有同步任务，各平台记录保持一致。</div>`}
     </div>`;
 
   Charts.stackedBars($('#trend-host'), hourly(logs));
